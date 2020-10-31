@@ -29,6 +29,10 @@
 #include "rt.h"
 #include "strrep.h"
 
+#define DEBUG 0
+#define debug(fmt, ...) \
+	do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+
 #define CDSP_PAUSE_STATE_RUNNING 0
 #define CDSP_PAUSE_STATE_PAUSED  (1 << 0)
 #define CDSP_PAUSE_STATE_PENDING (1 << 1)
@@ -100,6 +104,12 @@ typedef struct {
   // cargs[1] = config_out => Location of CamillaDSP output YAML configuration
   // cargs[2+] = Additional arguments passed through .asoundrc
   char *cargs[100];
+	// Search / Replace string tokens - let people use whatever format
+	// they want.
+	char *format_token;
+	char *rate_token;
+	char *channels_token;
+	char *ext_samp_token;
   // Extra samples parameter to pass to CamillaDSP if the config_in template
   // is used instead of config_cmd
   // ext_samp_44100 and ext_samp_4800 allow rate matched expansion of the
@@ -109,22 +119,6 @@ typedef struct {
   long ext_samp_44100;
   long ext_samp_48000;
 } cdsp_t;
-
-//#define DEBUG 1
-#if DEBUG
-void _debug(const char *format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  fprintf(stderr, format, ap);
-  va_end(ap);
-}
-#endif
-#if DEBUG
-void _debug(const char *format, ...) __attribute__ ((format(printf, 1, 2)));
-# define debug(M, ...) _debug("%s:%d: " M, __FILE__, __LINE__, ## __VA_ARGS__)
-#else
-# define debug(M, ...) do {} while (0)
-#endif
 
 #if SND_LIB_VERSION < 0x010106
 //
@@ -424,6 +418,10 @@ static int start_camilla(cdsp_t *pcm) {
 #endif
     
     if(!pcm->config_cmd) {
+			debug("format_token %s\n", pcm->format_token);
+			debug("rate_token %s\n", pcm->rate_token);
+			debug("channels_token %s\n", pcm->channels_token);
+			debug("ext_samp_token %s\n", pcm->ext_samp_token);
       FILE *cfgin = fopen(pcm->config_in, "r");
       if(!cfgin) {
         SNDERR("Error reading input config file %s\n", pcm->config_in);
@@ -437,10 +435,10 @@ static int start_camilla(cdsp_t *pcm) {
       char buf[1000];
       char *obuf;
       while(fgets(buf, sizeof(buf), cfgin)) {
-        obuf = strrep(buf, "{format}", cformat);
-        obuf = strrep(obuf, "{channels}", schannels);
-        obuf = strrep(obuf, "{samplerate}", srate);
-        obuf = strrep(obuf, "{extrasamples}", sextrasamples);
+        obuf = strrep(buf, pcm->format_token, cformat);
+        obuf = strrep(obuf, pcm->rate_token, srate);
+        obuf = strrep(obuf, pcm->channels_token, schannels);
+        obuf = strrep(obuf, pcm->ext_samp_token, sextrasamples);
         fprintf(cfgout,"%s",obuf);
       }
       fclose(cfgin);
@@ -541,23 +539,36 @@ static snd_pcm_sframes_t cdsp_pointer(snd_pcm_ioplug_t *io) {
   return pcm->io_hw_ptr;
 }
 
+static void free_cdsp(cdsp_t **pcm) {
+  if ((*pcm)->event_fd != -1)
+    close((*pcm)->event_fd);
+  if((*pcm)->cpath)
+    free((void *)(*pcm)->cpath);
+  if((*pcm)->config_in)
+    free((void *)(*pcm)->config_in);
+  int f = 0;
+  while((*pcm)->cargs[f] != 0) {
+    free((void *)(*pcm)->cargs[f++]);
+  }
+  if((*pcm)->config_cmd)
+    free((void *)(*pcm)->config_cmd);
+  if((*pcm)->format_token)
+    free((void *)(*pcm)->format_token);
+  if((*pcm)->rate_token)
+    free((void *)(*pcm)->rate_token);
+  if((*pcm)->channels_token)
+    free((void *)(*pcm)->channels_token);
+  if((*pcm)->ext_samp_token)
+    free((void *)(*pcm)->ext_samp_token);
+  pthread_mutex_destroy(&(*pcm)->mutex);
+	pthread_cond_destroy(&(*pcm)->pause_cond);
+	free((void *)*pcm);
+}
+
 static int cdsp_close(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
   debug("Closing");
-  close(pcm->event_fd);
-  if(pcm->cpath)
-    free((void *)pcm->cpath);
-  if(pcm->config_in)
-    free((void *)pcm->config_in);
-  int f = 0;
-  while(pcm->cargs[f] != 0) {
-    free((void *)pcm->cargs[f++]);
-  }
-  if(pcm->config_cmd)
-    free((void *)pcm->config_cmd);
-  pthread_mutex_destroy(&pcm->mutex);
-  pthread_cond_destroy(&pcm->pause_cond);
-  free(pcm);
+	free_cdsp(&pcm);
   return 0;
 }
 
@@ -579,12 +590,12 @@ static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   pcm->delay_fifo_size = 
     fcntl(pcm->cdsp_pcm_fd, F_SETPIPE_SZ, 2048) / pcm->frame_size;
 
-  debug("FIFO buffer size: %zd frames", pcm->delay_fifo_size);
+  debug("FIFO buffer size: %ld frames", pcm->delay_fifo_size);
 
   /* ALSA default for avail min is one period. */
   pcm->io_avail_min = io->period_size;
 
-  debug("Selected HW buffer: %zd periods x %zd bytes %c= %zd bytes",
+  debug("Selected HW buffer: %ld periods x %ld bytes %c= %ld bytes",
       io->buffer_size / io->period_size, pcm->frame_size * io->period_size,
       io->period_size * (io->buffer_size / io->period_size) == io->buffer_size ? '=' : '<',
       io->buffer_size * pcm->frame_size);
@@ -616,7 +627,7 @@ static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
   snd_pcm_uframes_t avail_min;
   snd_pcm_sw_params_get_avail_min(params, &avail_min);
   if (avail_min != pcm->io_avail_min) {
-    debug("Changing SW avail min: %zu -> %zu", pcm->io_avail_min, avail_min);
+    debug("Changing SW avail min: %lu -> %lu", pcm->io_avail_min, avail_min);
     pcm->io_avail_min = avail_min;
   }
 
@@ -913,6 +924,17 @@ static const snd_pcm_ioplug_callback_t cdsp_callback = {
   .poll_revents = cdsp_poll_revents,
 };
 
+// THIS ASSUMES SRC IS NULL TERMINATED!
+static int alloc_copy_string(char **dst, const char *src) {
+  *dst = (char *)malloc(strlen(src)+1);
+  if(!(*dst)) {
+    SNDERR("Out of memory");
+    return -ENOMEM;
+  }
+  strncpy(*dst, src, strlen(src)+1);
+	return 0;
+}
+
 SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   debug("Plugin creation\n");
 
@@ -922,8 +944,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   const char *temp = NULL;
   pcm = calloc(1, sizeof(*pcm));
   if(pcm == NULL) {
-    err = -ENOMEM;
-    goto _err;
+    return -ENOMEM;
   }
 
   // HW Parameters to accept
@@ -936,13 +957,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   unsigned int rate_list[100];
   long min_rate = 0;
   long max_rate = 0;
-  pcm->cargs[0] = (char *)malloc(strlen("camilladsp")+1);
-  if(!pcm->cargs[0]) {
-    SNDERR("Out of memory");
-    err = -ENOMEM;
-    goto _err;
-  }
-  strncpy(pcm->cargs[0], "camilladsp", strlen("camilladsp")+1);
+	if((err = alloc_copy_string(&pcm->cargs[0], "camilladsp")) < 0) goto _err;
 
   snd_config_for_each(i, next, conf) {
     snd_config_t *n = snd_config_iterator_entry(i);
@@ -953,46 +968,42 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       continue;
     if(strcmp(id, "cpath") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      pcm->cpath = (char *)malloc(strlen(temp)+1);
-      if(!pcm->cpath) {
-        SNDERR("Out of memory");
-        err = -ENOMEM;
-        goto _err;
-      }
-      strncpy(pcm->cpath, temp, strlen(temp)+1);
+			if((err = alloc_copy_string(&pcm->cpath, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_in") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      pcm->config_in = (char *)malloc(strlen(temp)+1);
-      if(!pcm->config_in) {
-        SNDERR("Out of memory");
-        err = -ENOMEM;
-        goto _err;
-      }
-      strncpy(pcm->config_in, temp, strlen(temp)+1);
+			if((err = alloc_copy_string(&pcm->config_in, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_out") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      pcm->cargs[1] = (char *)malloc(strlen(temp)+1);
-      if(!pcm->cargs[1]) {
-        SNDERR("Out of memory");
-        err = -ENOMEM;
-        goto _err;
-      }
-      strncpy(pcm->cargs[1], temp, strlen(temp)+1);
+			if((err = alloc_copy_string(&pcm->cargs[1], temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_cmd") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      pcm->config_cmd = (char *)malloc(strlen(temp)+1);
-      if(!pcm->config_cmd) {
-        SNDERR("Out of memory");
-        err = -ENOMEM;
-        goto _err;
-      }
-      strncpy(pcm->config_cmd, temp, strlen(temp)+1);
+			if((err = alloc_copy_string(&pcm->config_cmd, temp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "format_token") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+			if((err = alloc_copy_string(&pcm->format_token, temp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "rate_token") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+			if((err = alloc_copy_string(&pcm->rate_token, temp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "channels_token") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+			if((err = alloc_copy_string(&pcm->channels_token, temp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "ext_samp_token") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+			if((err = alloc_copy_string(&pcm->ext_samp_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "cargs") == 0) {
@@ -1005,13 +1016,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
         }
         snd_config_t *cn = snd_config_iterator_entry(ci);
         if((err = snd_config_get_string(cn, &temp)) < 0) goto _err;
-        pcm->cargs[n_cargs] = (char *)malloc(strlen(temp)+1);
-        if(!pcm->cargs[n_cargs]) {
-          SNDERR("Out of memory");
-          err = -ENOMEM;
-          goto _err;
-        }
-        strncpy(pcm->cargs[n_cargs++], temp, strlen(temp)+1);
+				if((err = alloc_copy_string(&pcm->cargs[n_cargs], temp)) < 0) goto _err;
+				n_cargs++;
       }
       continue;
     }
@@ -1140,6 +1146,25 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       if(rate_list[ii] > max_rate) max_rate = rate_list[ii];
     }
   }
+	if(pcm->config_in) {
+		if(!pcm->format_token) {
+			if((err = alloc_copy_string(&pcm->format_token, "{format}")) < 0) 
+				goto _err;
+		}
+		if(!pcm->rate_token) {
+			if((err = alloc_copy_string(&pcm->rate_token, "{samplerate}")) < 0) 
+				goto _err;
+		}
+		if(!pcm->channels_token) {
+			if((err = alloc_copy_string(&pcm->channels_token, "{channels}")) < 0) 
+				goto _err;
+		}
+		if(!pcm->ext_samp_token) {
+			if((err = alloc_copy_string(&pcm->ext_samp_token, "{extrasamples}")) < 0) 
+				goto _err;
+		}
+	}
+		
   // Done parsing / validating user input
 
   pcm->io.version = SND_PCM_IOPLUG_VERSION;
@@ -1219,20 +1244,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   return 0;
 
 _err:
-  if (pcm->event_fd != -1)
-    close(pcm->event_fd);
-  if(pcm->cpath)
-    free((void *)pcm->cpath);
-  if(pcm->config_in)
-    free((void *)pcm->config_in);
-  int f = 0;
-  while(pcm->cargs[f] != 0) {
-    free((void *)pcm->cargs[f++]);
-  }
-  if(pcm->config_cmd)
-    free((void *)pcm->config_cmd);
-  if(pcm)
-    free((void *)pcm);
+	free_cdsp(&pcm);
   return err;
 }
 SND_PCM_PLUGIN_SYMBOL(cdsp)

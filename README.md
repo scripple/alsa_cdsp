@@ -3,7 +3,7 @@ This is an ALSA I/O plugin for use with CamillaDSP for audio playback.  It start
 
 To aid in handling hardware parameter changes such as sample rate, format, or the number of input channels the plugin can automatically replace fields in the YAML files with the appropriate parameters and restart CamillaDSP.
 
-The following substitutions are available for YAML files.  hw_params are the values the playback chooses when playing a particular audio file or stream.
+The following substitutions are available for YAML files.  hw_params are the values the playback program chooses when playing a particular audio file or stream.  The "{xxx}" format is the default behavior.  This can be overridden in the .asoundrc file to use custom tokens.
 
     {samplerate} => Replaced with the sample rate set in the hw_params
 
@@ -135,6 +135,15 @@ pcm.camilladsp { # You can use any name, not just camilladsp
       # In this case {extrasamples} will be replaced with 
       # {samplerate/48000 * extra_samples_48000}.
       extra_samples_48000 8916
+      
+      # The following entries allows the use of custom tokens for the
+      # search and replace performed when config_in is specified.
+      # To set custom tokens uncomment the lines below and replace the
+      # default tokens with the desired tokens wrapped in quotes.
+      #format_token "{format}"
+      #rate_token "{samplerate}"
+      #channels_token "{channels}"
+      #ext_samp_token "{extrasamples}"
 }
 </pre>
 
