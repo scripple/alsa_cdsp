@@ -1219,7 +1219,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
           SND_PCM_IOPLUG_HW_PERIOD_BYTES, min_p, 1024 * 16)) < 0) goto _err;
 
   unsigned int max_buffer = 128*1024;
-	if(max_buffer < 2*min_p) max_buffer = 2*min_p;
+  if(max_buffer < 2*min_p) max_buffer = 2*min_p;
   if((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
           SND_PCM_IOPLUG_HW_BUFFER_BYTES, 32*1024, max_buffer)) < 0) goto _err;
 
