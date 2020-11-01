@@ -812,21 +812,18 @@ static int cdsp_delay(snd_pcm_ioplug_t *io, snd_pcm_sframes_t *delayp) {
 }
 
 static int cdsp_poll_descriptors_count(snd_pcm_ioplug_t *io) {
-  return 2;
+  return 1;
 }
 
 static int cdsp_poll_descriptors(snd_pcm_ioplug_t *io, struct pollfd *pfd,
     unsigned int nfds) {
   cdsp_t *pcm = io->private_data;
 
-  pfd[1].fd = pcm->cdsp_pcm_fd;
-  pfd[1].events = POLLOUT;
-
   // PCM plug-in relies on our internal event file descriptor.
   pfd[0].fd = pcm->event_fd;
   pfd[0].events = POLLIN;
 
-  return 2;
+  return 1;
 }
 
 static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
@@ -1217,8 +1214,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
         SND_PCM_IOPLUG_HW_RATE, min_rate, max_rate)) < 0) goto _err;
   }
 
-  if ((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, SND_PCM_IOPLUG_HW_PERIODS,
-          2, 1024)) < 0)
+  if ((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
+					SND_PCM_IOPLUG_HW_PERIODS, 2, 1024)) < 0)
     goto _err;
 
   // In order to prevent audio tearing and minimize CPU utilization, we're
