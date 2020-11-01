@@ -155,7 +155,7 @@ static int close_transport(cdsp_t *pcm) {
 
 // Helper function for IO thread termination.
 static void io_thread_cleanup(cdsp_t *pcm) {
-  debug("IO thread cleanup");
+  debug("IO thread cleanup\n");
   pcm->io_started = false;
 }
 
@@ -218,11 +218,11 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
   // The number of frames to complete the current period.
   snd_pcm_uframes_t balance = io->period_size;
 
-  debug("Starting IO loop: %d", pcm->cdsp_pcm_fd);
+  debug("Starting IO loop: %d\n", pcm->cdsp_pcm_fd);
   for (;;) {
     if (pcm->pause_state & CDSP_PAUSE_STATE_PENDING ||
         pcm->io_hw_ptr == -1) {
-      debug("Pausing IO thread: %ld", pcm->io_hw_ptr);
+      debug("Pausing IO thread: %ld\n", pcm->io_hw_ptr);
 
       pthread_mutex_lock(&pcm->mutex);
       pcm->pause_state = CDSP_PAUSE_STATE_PAUSED;
@@ -236,7 +236,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       pcm->pause_state = CDSP_PAUSE_STATE_RUNNING;
       pthread_mutex_unlock(&pcm->mutex);
 
-      debug("IO thread resumed");
+      debug("IO thread resumed\n");
 
       if (pcm->io_hw_ptr == -1)
         continue;
@@ -474,7 +474,7 @@ static int start_camilla(cdsp_t *pcm) {
 
 static int cdsp_start(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
-  debug("Starting");
+  debug("Starting\n");
 
   // If the IO thread is already started, skip thread creation. Otherwise,
   // we might end up with a bunch of IO threads reading or writing to the
@@ -494,7 +494,7 @@ static int cdsp_start(snd_pcm_ioplug_t *io) {
   pcm->io_started = true;
   if ((errno = pthread_create(&pcm->io_thread, NULL,
           PTHREAD_ROUTINE(io_thread), io)) != 0) {
-    debug("Couldn't create IO thread: %s", strerror(errno));
+    debug("Couldn't create IO thread: %s\n", strerror(errno));
     pcm->io_started = false;
     return -errno;
   }
@@ -505,7 +505,7 @@ static int cdsp_start(snd_pcm_ioplug_t *io) {
 
 static int cdsp_stop(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
-  debug("Stopping");
+  debug("Stopping\n");
 
   if (pcm->io_started) {
     pcm->io_started = false;
@@ -567,14 +567,14 @@ static void free_cdsp(cdsp_t **pcm) {
 
 static int cdsp_close(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
-  debug("Closing");
+  debug("Closing\n");
   free_cdsp(&pcm);
   return 0;
 }
 
 static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   cdsp_t *pcm = io->private_data;
-  debug("Initializing HW");
+  debug("Initializing HW\n");
 
   pcm->frame_size = (snd_pcm_format_physical_width(io->format)*io->channels)/8;
 
@@ -590,12 +590,12 @@ static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   pcm->delay_fifo_size = 
     fcntl(pcm->cdsp_pcm_fd, F_SETPIPE_SZ, 2048) / pcm->frame_size;
 
-  debug("FIFO buffer size: %ld frames", pcm->delay_fifo_size);
+  debug("FIFO buffer size: %ld frames\n", pcm->delay_fifo_size);
 
   /* ALSA default for avail min is one period. */
   pcm->io_avail_min = io->period_size;
 
-  debug("Selected HW buffer: %ld periods x %ld bytes %c= %ld bytes",
+  debug("Selected HW buffer: %ld periods x %ld bytes %c= %ld bytes\n",
       io->buffer_size / io->period_size, pcm->frame_size * io->period_size,
       io->period_size * (io->buffer_size / io->period_size) == io->buffer_size ? '=' : '<',
       io->buffer_size * pcm->frame_size);
@@ -605,8 +605,8 @@ static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
 
 static int cdsp_hw_free(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
-  debug("Freeing HW");
-  debug("Stopping Camilla");
+  debug("Freeing HW\n");
+  debug("Stopping Camilla\n");
   if (close_transport(pcm) == -1)
     return -errno;
   if(pcm->cpid != -1) {
@@ -620,14 +620,14 @@ static int cdsp_hw_free(snd_pcm_ioplug_t *io) {
 
 static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
   cdsp_t *pcm = io->private_data;
-  debug("Initializing SW");
+  debug("Initializing SW\n");
 
   snd_pcm_sw_params_get_boundary(params, &pcm->io_hw_boundary);
 
   snd_pcm_uframes_t avail_min;
   snd_pcm_sw_params_get_avail_min(params, &avail_min);
   if (avail_min != pcm->io_avail_min) {
-    debug("Changing SW avail min: %lu -> %lu", pcm->io_avail_min, avail_min);
+    debug("Changing SW avail min: %lu -> %lu\n", pcm->io_avail_min, avail_min);
     pcm->io_avail_min = avail_min;
   }
 
@@ -657,12 +657,12 @@ static int cdsp_prepare(snd_pcm_ioplug_t *io) {
   // as soon as it has been prepared.
   eventfd_write(pcm->event_fd, 1);
 
-  debug("Prepared");
+  debug("Prepared\n");
   return 0;
 }
 
 static int cdsp_drain(snd_pcm_ioplug_t *io) {
-  debug("Draining...");
+  debug("Draining\n");
   cdsp_t *pcm = io->private_data;
   // Wait for the playback thread to empty the ring buffer
   while(pcm->io_hw_ptr != -1)
@@ -1218,8 +1218,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   if ((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
           SND_PCM_IOPLUG_HW_PERIOD_BYTES, min_p, 1024 * 16)) < 0) goto _err;
 
-//  if((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
-//          SND_PCM_IOPLUG_HW_BUFFER_BYTES, 32*1024, 128*1024)) < 0) goto _err;
+  if((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
+          SND_PCM_IOPLUG_HW_BUFFER_BYTES, 32*1024, 128*1024)) < 0) goto _err;
 
   *pcmp = pcm->io.pcm;
 
