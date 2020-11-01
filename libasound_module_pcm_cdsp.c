@@ -31,7 +31,7 @@
 
 #define DEBUG 0
 #define debug(fmt, ...) \
-	do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+  do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 
 #define CDSP_PAUSE_STATE_RUNNING 0
 #define CDSP_PAUSE_STATE_PAUSED  (1 << 0)
@@ -104,12 +104,12 @@ typedef struct {
   // cargs[1] = config_out => Location of CamillaDSP output YAML configuration
   // cargs[2+] = Additional arguments passed through .asoundrc
   char *cargs[100];
-	// Search / Replace string tokens - let people use whatever format
-	// they want.
-	char *format_token;
-	char *rate_token;
-	char *channels_token;
-	char *ext_samp_token;
+  // Search / Replace string tokens - let people use whatever format
+  // they want.
+  char *format_token;
+  char *rate_token;
+  char *channels_token;
+  char *ext_samp_token;
   // Extra samples parameter to pass to CamillaDSP if the config_in template
   // is used instead of config_cmd
   // ext_samp_44100 and ext_samp_4800 allow rate matched expansion of the
@@ -418,10 +418,10 @@ static int start_camilla(cdsp_t *pcm) {
 #endif
     
     if(!pcm->config_cmd) {
-			debug("format_token %s\n", pcm->format_token);
-			debug("rate_token %s\n", pcm->rate_token);
-			debug("channels_token %s\n", pcm->channels_token);
-			debug("ext_samp_token %s\n", pcm->ext_samp_token);
+      debug("format_token %s\n", pcm->format_token);
+      debug("rate_token %s\n", pcm->rate_token);
+      debug("channels_token %s\n", pcm->channels_token);
+      debug("ext_samp_token %s\n", pcm->ext_samp_token);
       FILE *cfgin = fopen(pcm->config_in, "r");
       if(!cfgin) {
         SNDERR("Error reading input config file %s\n", pcm->config_in);
@@ -561,14 +561,14 @@ static void free_cdsp(cdsp_t **pcm) {
   if((*pcm)->ext_samp_token)
     free((void *)(*pcm)->ext_samp_token);
   pthread_mutex_destroy(&(*pcm)->mutex);
-	pthread_cond_destroy(&(*pcm)->pause_cond);
-	free((void *)*pcm);
+  pthread_cond_destroy(&(*pcm)->pause_cond);
+  free((void *)*pcm);
 }
 
 static int cdsp_close(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
   debug("Closing");
-	free_cdsp(&pcm);
+  free_cdsp(&pcm);
   return 0;
 }
 
@@ -811,21 +811,6 @@ static int cdsp_delay(snd_pcm_ioplug_t *io, snd_pcm_sframes_t *delayp) {
   return ret;
 }
 
-static int cdsp_poll_descriptors_count(snd_pcm_ioplug_t *io) {
-  return 1;
-}
-
-static int cdsp_poll_descriptors(snd_pcm_ioplug_t *io, struct pollfd *pfd,
-    unsigned int nfds) {
-  cdsp_t *pcm = io->private_data;
-
-  // PCM plug-in relies on our internal event file descriptor.
-  pfd[0].fd = pcm->event_fd;
-  pfd[0].events = POLLIN;
-
-  return 1;
-}
-
 static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
     unsigned int nfds, unsigned short *revents) {
   cdsp_t *pcm = io->private_data;
@@ -916,8 +901,6 @@ static const snd_pcm_ioplug_callback_t cdsp_callback = {
   .pause = cdsp_pause,
   .dump = cdsp_dump,
   .delay = cdsp_delay,
-  .poll_descriptors_count = cdsp_poll_descriptors_count,
-  .poll_descriptors = cdsp_poll_descriptors,
   .poll_revents = cdsp_poll_revents,
 };
 
@@ -929,7 +912,7 @@ static int alloc_copy_string(char **dst, const char *src) {
     return -ENOMEM;
   }
   strncpy(*dst, src, strlen(src)+1);
-	return 0;
+  return 0;
 }
 
 SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
@@ -954,7 +937,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   unsigned int rate_list[100];
   long min_rate = 0;
   long max_rate = 0;
-	if((err = alloc_copy_string(&pcm->cargs[0], "camilladsp")) < 0) goto _err;
+  if((err = alloc_copy_string(&pcm->cargs[0], "camilladsp")) < 0) goto _err;
 
   snd_config_for_each(i, next, conf) {
     snd_config_t *n = snd_config_iterator_entry(i);
@@ -965,42 +948,42 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       continue;
     if(strcmp(id, "cpath") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->cpath, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->cpath, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_in") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->config_in, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->config_in, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_out") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->cargs[1], temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->cargs[1], temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "config_cmd") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->config_cmd, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->config_cmd, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "format_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->format_token, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->format_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "rate_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->rate_token, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->rate_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "channels_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->channels_token, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->channels_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "ext_samp_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-			if((err = alloc_copy_string(&pcm->ext_samp_token, temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->ext_samp_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "cargs") == 0) {
@@ -1013,8 +996,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
         }
         snd_config_t *cn = snd_config_iterator_entry(ci);
         if((err = snd_config_get_string(cn, &temp)) < 0) goto _err;
-				if((err = alloc_copy_string(&pcm->cargs[n_cargs], temp)) < 0) goto _err;
-				n_cargs++;
+        if((err = alloc_copy_string(&pcm->cargs[n_cargs], temp)) < 0) goto _err;
+        n_cargs++;
       }
       continue;
     }
@@ -1143,34 +1126,41 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       if(rate_list[ii] > max_rate) max_rate = rate_list[ii];
     }
   }
-	if(pcm->config_in) {
-		if(!pcm->format_token) {
-			if((err = alloc_copy_string(&pcm->format_token, "{format}")) < 0) 
-				goto _err;
-		}
-		if(!pcm->rate_token) {
-			if((err = alloc_copy_string(&pcm->rate_token, "{samplerate}")) < 0) 
-				goto _err;
-		}
-		if(!pcm->channels_token) {
-			if((err = alloc_copy_string(&pcm->channels_token, "{channels}")) < 0) 
-				goto _err;
-		}
-		if(!pcm->ext_samp_token) {
-			if((err = alloc_copy_string(&pcm->ext_samp_token, "{extrasamples}")) < 0) 
-				goto _err;
-		}
-	}
-		
+  if(pcm->config_in) {
+    if(!pcm->format_token) {
+      if((err = alloc_copy_string(&pcm->format_token, "{format}")) < 0) 
+        goto _err;
+    }
+    if(!pcm->rate_token) {
+      if((err = alloc_copy_string(&pcm->rate_token, "{samplerate}")) < 0) 
+        goto _err;
+    }
+    if(!pcm->channels_token) {
+      if((err = alloc_copy_string(&pcm->channels_token, "{channels}")) < 0) 
+        goto _err;
+    }
+    if(!pcm->ext_samp_token) {
+      if((err = alloc_copy_string(&pcm->ext_samp_token, "{extrasamples}")) < 0) 
+        goto _err;
+    }
+  }
+    
   // Done parsing / validating user input
+
+
+  // Establish the event_fd used to signal ALSA
+  if ((pcm->event_fd = eventfd(0, EFD_CLOEXEC)) == -1) {
+    err = -errno;
+    goto _err;
+  }
 
   pcm->io.version = SND_PCM_IOPLUG_VERSION;
   pcm->io.name = "CamillaDSP Plugin";
-  pcm->io.mmap_rw = 0;
   pcm->io.callback = &cdsp_callback;
   pcm->io.private_data = pcm;
+  pcm->io.poll_events = POLLIN;
+  pcm->io.poll_fd = pcm->event_fd;
   pcm->cpid = -1;
-  pcm->event_fd = -1;
   pcm->cdsp_pcm_fd = -1;
   pthread_mutex_init(&pcm->mutex, NULL);
   pthread_cond_init(&pcm->pause_cond, NULL);
@@ -1215,7 +1205,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   }
 
   if ((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
-					SND_PCM_IOPLUG_HW_PERIODS, 2, 1024)) < 0)
+          SND_PCM_IOPLUG_HW_PERIODS, 2, 1024)) < 0)
     goto _err;
 
   // In order to prevent audio tearing and minimize CPU utilization, we're
@@ -1233,15 +1223,10 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
 
   *pcmp = pcm->io.pcm;
 
-  if ((pcm->event_fd = eventfd(0, EFD_CLOEXEC)) == -1) {
-    err = -errno;
-    goto _err;
-  }
-
   return 0;
 
 _err:
-	free_cdsp(&pcm);
+  free_cdsp(&pcm);
   return err;
 }
 SND_PCM_PLUGIN_SYMBOL(cdsp)
