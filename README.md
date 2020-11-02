@@ -3,31 +3,31 @@ This is an ALSA I/O plugin for use with CamillaDSP for audio playback.  It start
 
 To aid in handling hardware parameter changes such as sample rate, format, or the number of input channels the plugin can automatically replace fields in the YAML files with the appropriate parameters and restart CamillaDSP.
 
-The following substitutions are available for YAML files.  hw_params are the values the playback program chooses when playing a particular audio file or stream.  The "{xxx}" format is the default behavior.  This can be overridden in the .asoundrc file to use custom tokens.
+The following substitutions are available for YAML files.  hw_params are the values the playback program chooses when playing a particular audio file or stream.  The "$xxx$" format is the default behavior.  This can be overridden in the .asoundrc file to use custom tokens.
 
-    {samplerate} => Replaced with the sample rate set in the hw_params
+    $samplerate$ => Replaced with the sample rate set in the hw_params
 
-    {format} => Replaced with the format set in hw_params translated from ALSA to CamillaDSP format.
+    $format$ => Replaced with the format set in hw_params translated from ALSA to CamillaDSP format.
 
-    {channels} => Replaced with the number of channels specified in the hw_params.
+    $channels$ => Replaced with the number of channels specified in the hw_params.
     
-    {extrasamples} => Replaced with a possibly rate dependent amount of extra samples.  See below.
+    $extrasamples$ => Replaced with a possibly rate dependent amount of extra samples.  See below.
 
 Here is an example CamillaDSP input YAML template.  It is the minimum configuration to create a pass through scenario.
 
 <pre>
 devices:
-  samplerate: {samplerate}
+  samplerate: $samplerate$
   chunksize: 1024
   queuelimit: 1
   capture:
     type: File
-    channels: {channels}
+    channels: $channels$
     filename: "/dev/stdin"
-    format: {format}
+    format: $format$
   playback:
     type: ALSA
-    channels: {channels}
+    channels: $channels$
     device: "hw:0"
     format: S32LE
 </pre>
@@ -140,10 +140,10 @@ pcm.camilladsp { # You can use any name, not just camilladsp
       # search and replace performed when config_in is specified.
       # To set custom tokens uncomment the lines below and replace the
       # default tokens with the desired tokens wrapped in quotes.
-      #format_token "{format}"
-      #rate_token "{samplerate}"
-      #channels_token "{channels}"
-      #ext_samp_token "{extrasamples}"
+      #format_token "$format$"
+      #samplerate_token "$samplerate$"
+      #channels_token "$channels$"
+      #extrasamples_token "$extrasamples$"
 }
 </pre>
 

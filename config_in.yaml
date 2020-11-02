@@ -1,15 +1,15 @@
 devices:
-  samplerate: {samplerate}
+  samplerate: $samplerate$
   chunksize: 1024
   queuelimit: 1
   capture:
     type: File
-    channels: {channels}
+    channels: $channels$
     filename: "/dev/stdin"
-    format: {format}
-    extra_samples: {extrasamples}
+    format: $format$
+    extra_samples: $extrasamples$
   playback:
     type: ALSA
-    channels: {channels}
+    channels: $channels$
     device: "hw:0"
     format: S32LE

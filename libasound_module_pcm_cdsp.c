@@ -906,12 +906,13 @@ static const snd_pcm_ioplug_callback_t cdsp_callback = {
 
 // THIS ASSUMES SRC IS NULL TERMINATED!
 static int alloc_copy_string(char **dst, const char *src) {
-  *dst = (char *)malloc(strlen(src)+1);
+  size_t len = strlen(src)+1;
+  *dst = (char *)malloc(len);
   if(!(*dst)) {
     SNDERR("Out of memory");
     return -ENOMEM;
   }
-  strncpy(*dst, src, strlen(src)+1);
+  strncpy(*dst, src, len);
   return 0;
 }
 
@@ -971,7 +972,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       if((err = alloc_copy_string(&pcm->format_token, temp)) < 0) goto _err;
       continue;
     }
-    if(strcmp(id, "rate_token") == 0) {
+    if(strcmp(id, "samplerate_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
       if((err = alloc_copy_string(&pcm->rate_token, temp)) < 0) goto _err;
       continue;
@@ -981,7 +982,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       if((err = alloc_copy_string(&pcm->channels_token, temp)) < 0) goto _err;
       continue;
     }
-    if(strcmp(id, "ext_samp_token") == 0) {
+    if(strcmp(id, "extrasamples_token") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
       if((err = alloc_copy_string(&pcm->ext_samp_token, temp)) < 0) goto _err;
       continue;
@@ -1128,19 +1129,19 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   }
   if(pcm->config_in) {
     if(!pcm->format_token) {
-      if((err = alloc_copy_string(&pcm->format_token, "{format}")) < 0) 
+      if((err = alloc_copy_string(&pcm->format_token, "$format$")) < 0) 
         goto _err;
     }
     if(!pcm->rate_token) {
-      if((err = alloc_copy_string(&pcm->rate_token, "{samplerate}")) < 0) 
+      if((err = alloc_copy_string(&pcm->rate_token, "$samplerate$")) < 0) 
         goto _err;
     }
     if(!pcm->channels_token) {
-      if((err = alloc_copy_string(&pcm->channels_token, "{channels}")) < 0) 
+      if((err = alloc_copy_string(&pcm->channels_token, "$channels$")) < 0) 
         goto _err;
     }
     if(!pcm->ext_samp_token) {
-      if((err = alloc_copy_string(&pcm->ext_samp_token, "{extrasamples}")) < 0) 
+      if((err = alloc_copy_string(&pcm->ext_samp_token, "$extrasamples$")) < 0) 
         goto _err;
     }
   }
@@ -1221,7 +1222,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   unsigned int max_buffer = 128*1024;
   if(max_buffer < 2*min_p) max_buffer = 2*min_p;
   if((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
-          SND_PCM_IOPLUG_HW_BUFFER_BYTES, 32*1024, max_buffer)) < 0) goto _err;
+          SND_PCM_IOPLUG_HW_BUFFER_BYTES, 2*min_p, max_buffer)) < 0) goto _err;
 
   *pcmp = pcm->io.pcm;
 

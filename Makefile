@@ -1,8 +1,8 @@
 CC = gcc
-# CFLAGS += -Wall -fPIC -DPIC -std=c99
 CFLAGS += -Wall -fPIC -DPIC 
 LDFLAGS += -Wall -shared -lasound
-LIBDIR := lib/$(shell gcc --print-multiarch)
+#LIBDIR := lib/$(shell gcc --print-multiarch)
+LIBDIR := $(shell pkg-config --variable=libdir alsa)
 
 TARGET = libasound_module_pcm_cdsp
 
@@ -12,11 +12,11 @@ $(TARGET): $(TARGET).c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET).so $(TARGET).c
 
 install:
-	mkdir -p  /usr/$(LIBDIR)/alsa-lib/
-	install -m 644 $(TARGET).so /usr/$(LIBDIR)/alsa-lib/
+	mkdir -p  $(LIBDIR)/alsa-lib/
+	install -m 644 $(TARGET).so $(LIBDIR)/alsa-lib/
 
 uninstall:
-	rm /usr/$(LIBDIR)/alsa-lib/$(TARGET).so
+	rm $(LIBDIR)/alsa-lib/$(TARGET).so
 
 clean:
 	rm $(TARGET).so
