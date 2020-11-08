@@ -466,35 +466,24 @@ static int start_camilla(cdsp_t *pcm) {
       }
     } else {
       // Pass the hw_params as arguments directly to CamillaDSP
-      pcm->cargs[pcm->n_cargs] = malloc(3);
-      snprintf(pcm->cargs[pcm->n_cargs], 3, "-f");
+			char farg[] = "-f";
+      pcm->cargs[pcm->n_cargs] = farg;
       pcm->cargs[pcm->n_cargs+1] = sformat;
 
-      pcm->cargs[pcm->n_cargs+2] = malloc(3);
-      snprintf(pcm->cargs[pcm->n_cargs+2], 3, "-r");
+			char rarg[] = "-r";
+      pcm->cargs[pcm->n_cargs+2] = rarg;
       pcm->cargs[pcm->n_cargs+3] = srate;
 
-      pcm->cargs[pcm->n_cargs+4] = malloc(3);
-      snprintf(pcm->cargs[pcm->n_cargs+4], 3, "-n");
+			char narg[] = "-n";
+      pcm->cargs[pcm->n_cargs+4] = narg;
       pcm->cargs[pcm->n_cargs+5] = schannels;
 
-      pcm->cargs[pcm->n_cargs+4] = malloc(3);
-      snprintf(pcm->cargs[pcm->n_cargs+6], 3, "-e");
+			char earg[] = "-e";
+      pcm->cargs[pcm->n_cargs+6] = earg;
       pcm->cargs[pcm->n_cargs+7] = sextrasamples;
     }
 
     execv(pcm->cpath, pcm->cargs);
-
-    // Free the temporary extra arguments
-    if(pcm->config_cdsp) {
-      free(pcm->cargs[pcm->n_cargs]);
-      free(pcm->cargs[pcm->n_cargs+2]);
-      free(pcm->cargs[pcm->n_cargs+4]);
-      free(pcm->cargs[pcm->n_cargs+6]);
-      for(int ii = 0; ii < 8; ii++) {
-        pcm->cargs[pcm->n_cargs+ii] = 0;
-      }
-    }
 
     // Shouldn't get here
     SNDERR("Failed to execute CamillaDSP");
