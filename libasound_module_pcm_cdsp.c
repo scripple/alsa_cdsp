@@ -214,7 +214,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
   }
 
   struct asrsync asrs;
-	// Make sure the internal clock runs a little fast if anything
+  // Make sure the internal clock runs a little fast if anything
   asrsync_init(&asrs, 1.01*io->rate);
 
   // We update pcm->io_hw_ptr (i.e. the value seen by ioplug) only when
@@ -252,7 +252,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         goto fail;
       }
 
-			// Make sure the internal clock runs a little fast if anything
+      // Make sure the internal clock runs a little fast if anything
       asrsync_init(&asrs, 1.01*io->rate);
       io_hw_ptr = io->hw_ptr;
     }
@@ -468,19 +468,19 @@ static int start_camilla(cdsp_t *pcm) {
       }
     } else {
       // Pass the hw_params as arguments directly to CamillaDSP
-			char farg[] = "-f";
+      char farg[] = "-f";
       pcm->cargs[pcm->n_cargs] = farg;
       pcm->cargs[pcm->n_cargs+1] = sformat;
 
-			char rarg[] = "-r";
+      char rarg[] = "-r";
       pcm->cargs[pcm->n_cargs+2] = rarg;
       pcm->cargs[pcm->n_cargs+3] = srate;
 
-			char narg[] = "-n";
+      char narg[] = "-n";
       pcm->cargs[pcm->n_cargs+4] = narg;
       pcm->cargs[pcm->n_cargs+5] = schannels;
 
-			char earg[] = "-e";
+      char earg[] = "-e";
       pcm->cargs[pcm->n_cargs+6] = earg;
       pcm->cargs[pcm->n_cargs+7] = sextrasamples;
     }
@@ -545,7 +545,10 @@ static int cdsp_stop(snd_pcm_ioplug_t *io) {
   // Bug in ioplug - if pcm->io_hw_ptr == -1 then it reports state
   // SND_PCM_STATE_XRUN instead of SND_PCM_STATE_SETUP after PCM
   // was stopped.
-  pcm->io_hw_ptr = 0;
+  // However -1 should be set if it is due to draining
+  if(io->state != SND_PCM_STATE_DRAINING) {
+    pcm->io_hw_ptr = 0;
+  }
 
   // Applications that call poll() after snd_pcm_drain() will be blocked
   // forever unless we generate a poll() event here.
