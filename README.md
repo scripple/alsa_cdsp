@@ -41,61 +41,97 @@ The plugin automatically enumerates as being capable of handling all the ALSA in
 Here is a sample .asoundrc (or /etc/asound.conf) file.
 
 <pre>
-pcm.camilladsp { # You can use any name, not just camilladsp
-    # This must be present - it declares to use this plugin.
+# This declares an ALSA device that you can specify to playback programs.
+# You can use any name you wish that ALSA supports not just camilladsp.
+# To use it you specify it to alsa like "aplay -D camilladsp"
+pcm.camilladsp {
+    # type cdsp must be present - it declares to use this plugin.
     # The type is NOT a variable name you can choose.
-    # You can however create multiple type cdsp plugins
-    # with different names (pcm.camilladsp is the name here) 
-    # if you want to specify different parameters
+    # You can however create multiple type cdsp plugins with different names
+    # if you want to specify different parameters selected by specifying a
+    # different ALSA device.
     type cdsp
-      # This is the absolute path to the CamillaDSP executable.
-      # It must have executable permission for any user that
-      # runs an audio program that uses this plugin.
+    
+      #######################################################################
+      #######################################################################
+      # Required parameters.
+      # The parameters in this section must be specified as a valid set.
+      #######################################################################
+      #######################################################################
+      
+      # cpath specifies the absolute path to the CamillaDSP executable.
+      # CamillaDSP must have executable permission for any user that runs an
+      # audio program that uses this plugin.
       cpath "/path/to/camilladsp"
       
-      # This is the absolute path to the YAML template the 
-      # plugin will read and pass along to CamillaDSP
-      # after making the above substitutions.  It must
-      # be readable by any user that runs an audio program
-      # that uses this plugin.
-      config_in "/path/to/config_in.yaml"
-      
-      # An alternative to config_in is to set config_cmd.
-      # This command will be called whenever the hw_params
-      # change with arguments "format rate channels".  It
-      # should create the YAML file CamillaDSP will load
-      # and place it in the location specified by the 
-      # config_out parameter.
-      # config_cmd "/path/to/more_complex_yaml_creator
-      
-      # This is the absolute path where the plugin will
-      # write the YAML file that CamillaDSP actually loads.
-      # Is must be readable AND writable by any user that
-      # runs an audio program that uses this plugin.
+      # config_out is the absolute path that will be passed to CamillaDSP as
+      # the YAML config file argument. The file must be readable by any user
+      # that runs an audio program that uses this plugin.  If the config_in
+      # or config_cmd options are chosen (see below) it must also be writable
+      # by those users.
       config_out "/path/to/config_out.yaml"
       
-      # If you wish to specify additional arguments to
-      # CamillaDSP you can specify them using the cargs
-      # array.  Numeric arguments must be quoted in strings
-      # or the plugin will fail to load.
-      cargs [
-        -p "1234"
-        -a "0.0.0.0"
-        -l warn
-      ]
+      #######################################################################
+      # Parameter Passing Options
+      #
+      # There are three mutually exclusive ways to send the updated hw_params
+      # and extra_samples to CamillaDSP.  One and only one method must be
+      # specified. The three methods are config_in, config_cmd, and 
+      # config_cdsp.
+      #######################################################################
+
+      # config_in is an absolute path to a YAML template the plugin will read
+      # and pass along to CamillaDSP after making simple token substitutions.
+      # It must be readable by any user that runs an audio program that uses
+      # this plugin.
+      config_in "/path/to/config_in.yaml"
       
-      # You must specify the number of input channels this plugin
-      # will enumerate to audio programs.
-      # The plugin will accept a single value like this.
+      # config_in processing does a simple search and replace of four tokens
+      # representing format, channels, sample rate, and extra samples 
+      # replacing the tokens with the appropriate parameters.  The following
+      # entries show the default tokens.  They can be changed to custom
+      # tokens by uncommenting the lines below and replacing the default
+      # tokens with the desired tokens wrapped in quotes.
+      #format_token "$format$"
+      #samplerate_token "$samplerate$"
+      #channels_token "$channels$"
+      #extrasamples_token "$extrasamples$"
+      
+      # config_cmd is the absolute path to a command that will be called
+      # whenever the hw_params change with arguments "format rate channels".
+      # It should create the YAML file CamillaDSP will load and place it in
+      # the location specified by the config_out parameter.
+      # Note that the extra_samples parameters specified below are NOT
+      # passed in any way to this command.
+      #config_cmd "/path/to/more_complex_yaml_creator"
+      
+      # config_cdsp says to use the new CamillaDSP internal substitutions.
+      # When config_cdsp is set to an integer != 0 the hw_params and 
+      # extra samples are passed to CamillaDSP on the command line as
+      # -f format -r samplerate -n channels -e extra_samples
+      #config_cdsp 1
+      
+      #######################################################################
+      # End Parameter Passing Options
+      #######################################################################
+      
+      #######################################################################
+      # Capability Enumeration
+      #
+      # The plugin will announce the hw_params it supports based on the 
+      # following settings.  Channels and sample rates must be specified.
+      # The plugin will automatically enumerate all the formats that 
+      # CamillaDSP supports.
+      #######################################################################
+      # Channels can be specified as a single value like this.
       channels 2
       # Or a range like this. (Uncomment the lines.)
       #min_channels 1
       #max_channels 2
       # But only one method can be used.
       
-      # Sample rates that the plugin will enumerate to audio programs
-      # must also be specified.  They can be configured as a specific list
-      # like this.  (Up to 100 entries.)
+      # Sample rates can be configured as a specific list like this.  
+      # (Up to 100 entries.)
       rates = [
         44100 
         48000 
@@ -109,41 +145,62 @@ pcm.camilladsp { # You can use any name, not just camilladsp
       # Or as a range like this.  (Uncomment the lines.)  
       #min_rate 44100
       #max_rate 384000      
-      # Note that if you use a range like this ALSA will
-      # accept ANYTHING in that range.  Even something 
-      # odd like 45873.  If you aren't using CamillaDSP's
-      # resampler and don't have a very unusual DAC you
-      # are probably better off with the list format above.
+      # Note that if you use a range like this ALSA will accept ANYTHING in
+      # that range.  Even something odd like 45873.  If you aren't using
+      # CamillaDSP's resampler and don't have a very unusual DAC you are
+      # probably better off with the list format above.
+      #######################################################################
+      # End Capability Enumeration
+      #######################################################################
       
-      # Extra samples can be provided in a rate scaling way for the
-      # two most common audio base rates.  This is under the assumption
-      # your filters will be N times as long at N times the base rate.
-      # Any of the following three values can be set or excluded in any
-      # combination.
+      #######################################################################
+      #######################################################################
+      # End Required Parameters
+      #######################################################################
+      #######################################################################      
+
+      #######################################################################
+      #######################################################################
+      # Optional Parameters
+      #######################################################################
+      ####################################################################### 
       
-      # Used when the sample rate is not an integer multiple of 44100
-      # or 48000 or when the corresponding rate matching extra_samples 
-      # option is not set.
+      # If you wish to specify additional arguments to CamillaDSP you can
+      # specify them using the cargs array.  Numeric arguments must be quoted
+      # in strings or the plugin will fail to load. You should not specify
+      # the hw_params arguments here as the plugin will take care of that as
+      # they change.
+      cargs [
+        -p "1234"
+        -a "0.0.0.0"
+        -l warn
+      ]      
+      
+      # Extra samples can be provided in a rate scaling way for the two most
+      # common audio base rates.  This is under the assumption your filters
+      # will be N times as long at N times the base rate. Any of the 
+      # following three values can be set or excluded in any combination.
+      # If no extra_samples parameters are set 0 will be used wherever 
+      # extra_samples is called for.
+      
+      # extra_samples is used when the sample rate is not an integer multiple
+      # of 44100 or 48000 or when the corresponding rate matching 
+      # extra_samples option is not set.
+      #
+      # If using config_cdsp this is the only version of extra_samples
+      # that should be specified as CamillaDSP does its own sample rate
+      # based scaling of the extra samples.
       extra_samples 0
       
-      # Used when the sample rate is an integer multiple of 44100.
-      # In this case {extrasamples} will be replaced with 
+      # extra_samples_44100 is used when the sample rate is an integer
+      # multiple of 44100. In this case {extrasamples} will be replaced with 
       # {samplerate/44100 * extra_samples_44100}.
       extra_samples_44100 8192
-
-      # Used when the sample rate is an integer multiple of 48000.
-      # In this case {extrasamples} will be replaced with 
+      
+      # extra_samples_48000 is used when the sample rate is an integer
+      # multiple of 48000. In this case {extrasamples} will be replaced with 
       # {samplerate/48000 * extra_samples_48000}.
       extra_samples_48000 8916
-      
-      # The following entries allows the use of custom tokens for the
-      # search and replace performed when config_in is specified.
-      # To set custom tokens uncomment the lines below and replace the
-      # default tokens with the desired tokens wrapped in quotes.
-      #format_token "$format$"
-      #samplerate_token "$samplerate$"
-      #channels_token "$channels$"
-      #extrasamples_token "$extrasamples$"
 }
 </pre>
 
