@@ -215,7 +215,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
 
   struct asrsync asrs;
 	// Make sure the internal clock runs a little fast if anything
-  asrsync_init(&asrs, 1.02*io->rate);
+  asrsync_init(&asrs, 1.01*io->rate);
 
   // We update pcm->io_hw_ptr (i.e. the value seen by ioplug) only when
   // a period has been completed. We use a temporary copy during the
@@ -253,7 +253,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       }
 
 			// Make sure the internal clock runs a little fast if anything
-      asrsync_init(&asrs, 1.02*io->rate);
+      asrsync_init(&asrs, 1.01*io->rate);
       io_hw_ptr = io->hw_ptr;
     }
 
