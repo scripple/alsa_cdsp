@@ -99,15 +99,15 @@ typedef struct {
   // Alternatively to providing config_in provide a program
   // that will generate config_out
   char *config_cmd;
-	// And yet another alternative use CamillaDSP's new internal
-	// subsitution
-	long config_cdsp;
+  // And yet another alternative use CamillaDSP's new internal
+  // subsitution
+  long config_cdsp;
   // Arguments to execv
   // cargs[0] = "camilladsp" => Process name
   // cargs[1] = config_out => Location of CamillaDSP output YAML configuration
   // cargs[2+] = Additional arguments passed through .asoundrc
-	// If config_cdsp cargs will also be used to hold hw_params
-	// Make the array a bit bigger to allow them
+  // If config_cdsp cargs will also be used to hold hw_params
+  // Make the array a bit bigger to allow them
   size_t n_cargs;
   char *cargs[110];
   // Search / Replace string tokens - let people use whatever format
@@ -413,7 +413,7 @@ static int start_camilla(cdsp_t *pcm) {
     debug("config_in %s\n", pcm->config_in);
     debug("config_out %s\n", pcm->cargs[1]);
     debug("config_cmd %s\n", pcm->config_cmd);
-		debug("config_cdsp %ld\n", pcm->config_cdsp);
+    debug("config_cdsp %ld\n", pcm->config_cdsp);
     debug("cargs:");
 #ifdef DEBUG
     int ca = 2;
@@ -465,36 +465,36 @@ static int start_camilla(cdsp_t *pcm) {
         return err;
       }
     } else {
-			// Pass the hw_params as arguments directly to CamillaDSP
-			pcm->cargs[pcm->n_cargs] = malloc(3);
-			snprintf(pcm->cargs[pcm->n_cargs], 3, "-f");
-			pcm->cargs[pcm->n_cargs+1] = sformat;
+      // Pass the hw_params as arguments directly to CamillaDSP
+      pcm->cargs[pcm->n_cargs] = malloc(3);
+      snprintf(pcm->cargs[pcm->n_cargs], 3, "-f");
+      pcm->cargs[pcm->n_cargs+1] = sformat;
 
-			pcm->cargs[pcm->n_cargs+2] = malloc(3);
-			snprintf(pcm->cargs[pcm->n_cargs+2], 3, "-r");
-			pcm->cargs[pcm->n_cargs+3] = srate;
+      pcm->cargs[pcm->n_cargs+2] = malloc(3);
+      snprintf(pcm->cargs[pcm->n_cargs+2], 3, "-r");
+      pcm->cargs[pcm->n_cargs+3] = srate;
 
-			pcm->cargs[pcm->n_cargs+4] = malloc(3);
-			snprintf(pcm->cargs[pcm->n_cargs+4], 3, "-n");
-			pcm->cargs[pcm->n_cargs+5] = schannels;
+      pcm->cargs[pcm->n_cargs+4] = malloc(3);
+      snprintf(pcm->cargs[pcm->n_cargs+4], 3, "-n");
+      pcm->cargs[pcm->n_cargs+5] = schannels;
 
-			pcm->cargs[pcm->n_cargs+4] = malloc(3);
-			snprintf(pcm->cargs[pcm->n_cargs+6], 3, "-e");
-			pcm->cargs[pcm->n_cargs+7] = sextrasamples;
-		}
+      pcm->cargs[pcm->n_cargs+4] = malloc(3);
+      snprintf(pcm->cargs[pcm->n_cargs+6], 3, "-e");
+      pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+    }
 
     execv(pcm->cpath, pcm->cargs);
 
-		// Free the temporary extra arguments
-		if(pcm->config_cdsp) {
-			free(pcm->cargs[pcm->n_cargs]);
-			free(pcm->cargs[pcm->n_cargs+2]);
-			free(pcm->cargs[pcm->n_cargs+4]);
-			free(pcm->cargs[pcm->n_cargs+6]);
-			for(int ii = 0; ii < 8; ii++) {
-				pcm->cargs[pcm->n_cargs+ii] = 0;
-			}
-		}
+    // Free the temporary extra arguments
+    if(pcm->config_cdsp) {
+      free(pcm->cargs[pcm->n_cargs]);
+      free(pcm->cargs[pcm->n_cargs+2]);
+      free(pcm->cargs[pcm->n_cargs+4]);
+      free(pcm->cargs[pcm->n_cargs+6]);
+      for(int ii = 0; ii < 8; ii++) {
+        pcm->cargs[pcm->n_cargs+ii] = 0;
+      }
+    }
 
     // Shouldn't get here
     SNDERR("Failed to execute CamillaDSP");
@@ -1037,7 +1037,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
         snd_config_t *cn = snd_config_iterator_entry(ci);
         if((err = snd_config_get_string(cn, &temp)) < 0) goto _err;
         if((err = alloc_copy_string(&pcm->cargs[pcm->n_cargs], temp)) < 0)
-					goto _err;
+          goto _err;
         pcm->n_cargs++;
       }
       continue;
@@ -1106,19 +1106,19 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     err = -EINVAL;
     goto _err;
   }
-	if(pcm->config_in) {
-		if(pcm->config_cmd || pcm->config_cdsp) {
-    	SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
-    	err = -EINVAL;
-    	goto _err;
-		}
+  if(pcm->config_in) {
+    if(pcm->config_cmd || pcm->config_cdsp) {
+      SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
+      err = -EINVAL;
+      goto _err;
+    }
   } else if(pcm->config_cmd) {
-		if(pcm->config_cdsp) {
-    	SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
-    	err = -EINVAL;
-    	goto _err;
-		}
-	}
+    if(pcm->config_cdsp) {
+      SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
+      err = -EINVAL;
+      goto _err;
+    }
+  }
 
   if(!pcm->cargs[1]) {
     SNDERR("Must supply config_out file parameter.");
