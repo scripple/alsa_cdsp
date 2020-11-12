@@ -29,7 +29,7 @@
 #include "rt.h"
 #include "strrep.h"
 
-#define DEBUG 0
+#define DEBUG 1
 #define debug(fmt, ...) \
   do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 
@@ -197,6 +197,7 @@ static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_sframes_t hw_ptr) {
 static void *io_thread(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
   pthread_cleanup_push(PTHREAD_CLEANUP(io_thread_cleanup), pcm);
+  int xrun = 0;
 
   sigset_t sigset;
   sigemptyset(&sigset);
@@ -212,10 +213,6 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     SNDERR("Thread signal mask error: %s", strerror(errno));
     goto fail;
   }
-
-  struct asrsync asrs;
-  // Make sure the internal clock runs a little fast if anything
-  asrsync_init(&asrs, 1.01*io->rate);
 
   // We update pcm->io_hw_ptr (i.e. the value seen by ioplug) only when
   // a period has been completed. We use a temporary copy during the
@@ -252,8 +249,6 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         goto fail;
       }
 
-      // Make sure the internal clock runs a little fast if anything
-      asrsync_init(&asrs, 1.01*io->rate);
       io_hw_ptr = io->hw_ptr;
     }
 
@@ -268,9 +263,37 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     snd_pcm_uframes_t avail;
     if ((avail = snd_pcm_ioplug_hw_avail(io, io_hw_ptr, io->appl_ptr)) == 0) {
       io_thread_update_delay(pcm, 0);
-      io_hw_ptr = -1;
-      goto sync;
+      if(io->state == SND_PCM_STATE_DRAINING) {
+        // Draining is complete.  Signal that to the ioplug code so it will
+        // drop the pcm.
+        io_hw_ptr = -1;
+        goto sync;
+      } else {
+        //debug("IO Thread out of data.\n");
+        // Running and no data is available.  The internal alsa buffer is
+        // empty.  This isn't a problem until a period has passed though
+        // at which point we have an underrun condition.
+        // Sleep in 1/4 period intervals to wait for data to catch up
+        struct timespec ts;
+        ts.tv_sec = io->period_size / io->rate / 4;
+        ts.tv_nsec = 1000000000 / io->rate * (io->period_size/4 % io->rate);
+        nanosleep(&ts, NULL);
+        xrun++;
+        if(xrun > 4) {
+          // We've gone longer than a period with no data.
+          // The player isn't providing data fast enough.
+          debug("XRUN OCCURRED!\n");
+          // Signal XRUN to the ioplug code
+          io_hw_ptr = -1;
+          goto sync;
+        }
+        // The hw_ptr didn't actually change so don't trigger a sync
+        // event.
+        goto nosync;
+      }
     }
+    // Data available - reset the xrun counter
+    xrun = 0;
 
     // the number of frames to be transferred in this iteration
     snd_pcm_uframes_t frames = balance;
@@ -316,8 +339,6 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
 
     io_thread_update_delay(pcm, io_hw_ptr);
 
-    // synchronize playback time
-    asrsync_sync(&asrs, frames);
 
     // repeat until period is completed
     balance -= frames;
@@ -332,6 +353,7 @@ sync:
     // the HW pointer change.
     eventfd_write(pcm->event_fd, 1);
 
+nosync:
     // Start the next period.
     balance = io->period_size;
   }
@@ -881,12 +903,13 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
           ready = false;
           *revents = 0;
         }
-        break;
-      case SND_PCM_STATE_RUNNING:
         if ((snd_pcm_uframes_t)avail < pcm->io_avail_min) {
           ready = false;
           *revents = 0;
         }
+        break;
+      case SND_PCM_STATE_RUNNING:
+        ready = false;
         break;
       case SND_PCM_STATE_XRUN:
       case SND_PCM_STATE_PAUSED:
