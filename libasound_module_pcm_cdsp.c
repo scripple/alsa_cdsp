@@ -910,6 +910,9 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
         }
         break;
       case SND_PCM_STATE_RUNNING:
+        if ((snd_pcm_uframes_t)avail < pcm->io_avail_min) {
+          *revents = 0;
+        }
         ready = false;
         break;
       case SND_PCM_STATE_XRUN:
