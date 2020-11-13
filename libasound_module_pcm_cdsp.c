@@ -29,7 +29,7 @@
 #include "rt.h"
 #include "strrep.h"
 
-#define DEBUG 1
+#define DEBUG 0
 #define debug(fmt, ...) \
   do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 
