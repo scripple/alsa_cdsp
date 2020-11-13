@@ -171,6 +171,7 @@ static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_sframes_t hw_ptr) {
   unsigned int nread = 0;
 
   gettimestamp(&now);
+	// Get the number of bytes still in the pipe to cdsp
   ioctl(pcm->cdsp_pcm_fd, FIONREAD, &nread);
 
   pthread_mutex_lock(&pcm->mutex);
