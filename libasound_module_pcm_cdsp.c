@@ -22,6 +22,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
@@ -889,6 +890,12 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
 
   if (pcm->cdsp_pcm_fd == -1)
     goto fail;
+
+	// We only advertise a single file descriptor so the 
+	// play really should be giving us that descriptor
+	// and just that descriptor.  
+	assert(nfds == 1);
+	assert(pfd[0].fd == pcm->event_fd);
 
   if (pfd[0].revents & POLLIN) {
 
