@@ -33,16 +33,16 @@
 #define DEBUG 2
 #define error(fmt, ...) \
   do { if(DEBUG > 0){fprintf(stderr,"CDSP Plugin ERROR: ");\
-		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+    fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 #define warn(fmt, ...) \
   do { if(DEBUG > 1){fprintf(stderr,"CDSP Plugin WARN: ");\
-		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+    fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 #define info(fmt, ...) \
   do { if(DEBUG > 2){fprintf(stderr,"CDSP Plugin INFO: ");\
-		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+    fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 #define debug(fmt, ...) \
   do { if(DEBUG > 3){fprintf(stderr,"CDSP Plugin DEBUG: ");\
-		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+    fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 #define excessive(fmt, ...) \
   do { if(DEBUG > 4){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 
@@ -138,10 +138,10 @@ typedef struct {
   long ext_samp_44100;
   long ext_samp_48000;
 
-	// Suppress a spurious warning on the first call to revents for the
-	// event triggered during prepare.  Some programs need that event to
-	// start so it's not actually an overcall.
-	bool first_revent;
+  // Suppress a spurious warning on the first call to revents for the
+  // event triggered during prepare.  Some programs need that event to
+  // start so it's not actually an overcall.
+  bool first_revent;
 } cdsp_t;
 
 #if SND_LIB_VERSION < 0x010106
@@ -189,7 +189,7 @@ static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_sframes_t hw_ptr) {
   unsigned int nread = 0;
 
   gettimestamp(&now);
-	// Get the number of bytes still in the pipe to cdsp
+  // Get the number of bytes still in the pipe to cdsp
   ioctl(pcm->cdsp_pcm_fd, FIONREAD, &nread);
 
   pthread_mutex_lock(&pcm->mutex);
@@ -358,8 +358,8 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       head += ret;
       len -= ret;
     } while (len != 0);
-		// Things tend to run a little smoother if writes take at least
-		// some time.  So slow down when the pipe was empty enough that the
+    // Things tend to run a little smoother if writes take at least
+    // some time.  So slow down when the pipe was empty enough that the
     // write was basically instant.
     gettimestamp(&tstop);
     difftimespec(&tstart, &tstop, &twrite);
@@ -367,9 +367,9 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     double writetime = (double)twrite.tv_sec + (double)twrite.tv_nsec/1e9;
     double excess = sampletime - writetime;
     if(excess > 0) {
-	    tstop.tv_sec = (time_t)excess;
-	    tstop.tv_nsec = (long)(0.5*excess*1e9);
-	    nanosleep(&tstop, NULL);
+      tstop.tv_sec = (time_t)excess;
+      tstop.tv_nsec = (long)(0.5*excess*1e9);
+      nanosleep(&tstop, NULL);
     }
     excessive("Frames = %lu = %lf secs, Write Time = %lf\n", frames, sampletime, writetime);
 
@@ -662,7 +662,7 @@ static int cdsp_close(snd_pcm_ioplug_t *io) {
 static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   cdsp_t *pcm = io->private_data;
   info("Initializing hw_params: %s %d %d\n",
-			snd_pcm_format_name(io->format), io->rate, io->channels);
+      snd_pcm_format_name(io->format), io->rate, io->channels);
 
   pcm->frame_size = (snd_pcm_format_physical_width(io->format)*io->channels)/8;
 
@@ -743,7 +743,7 @@ static int cdsp_prepare(snd_pcm_ioplug_t *io) {
   // true - the IO thread may not be running yet. Applications using
   // snd_pcm_sw_params_set_start_threshold() require the PCM to be usable
   // as soon as it has been prepared.
-	pcm->first_revent = true;
+  pcm->first_revent = true;
   eventfd_write(pcm->event_fd, 1);
 
   debug("Prepared\n");
@@ -910,11 +910,11 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
   if (pcm->cdsp_pcm_fd == -1)
     goto fail;
 
-	// We only advertise a single file descriptor so the 
-	// player really should be giving us that descriptor
-	// and just that descriptor.  
-	assert(nfds == 1);
-	assert(pfd[0].fd == pcm->event_fd);
+  // We only advertise a single file descriptor so the 
+  // player really should be giving us that descriptor
+  // and just that descriptor.  
+  assert(nfds == 1);
+  assert(pfd[0].fd == pcm->event_fd);
 
   if (pfd[0].revents & POLLIN) {
 
@@ -954,11 +954,11 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
         break;
       case SND_PCM_STATE_RUNNING:
         if ((snd_pcm_uframes_t)avail < pcm->io_avail_min) {
-					if(pcm->first_revent) {
-						pcm->first_revent = false;
-					} else {
-          	warn("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
-					}
+          if(pcm->first_revent) {
+            pcm->first_revent = false;
+          } else {
+            warn("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
+          }
           *revents = 0;
         }
         ready = false;
