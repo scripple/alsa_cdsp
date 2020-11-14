@@ -30,9 +30,21 @@
 #include "rt.h"
 #include "strrep.h"
 
-#define DEBUG 0
+#define DEBUG 2
+#define error(fmt, ...) \
+  do { if(DEBUG > 0){fprintf(stderr,"CDSP Plugin ERROR: ");\
+		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+#define warn(fmt, ...) \
+  do { if(DEBUG > 1){fprintf(stderr,"CDSP Plugin WARN: ");\
+		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+#define info(fmt, ...) \
+  do { if(DEBUG > 2){fprintf(stderr,"CDSP Plugin INFO: ");\
+		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 #define debug(fmt, ...) \
-  do { if(DEBUG){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+  do { if(DEBUG > 3){fprintf(stderr,"CDSP Plugin DEBUG: ");\
+		fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
+#define excessive(fmt, ...) \
+  do { if(DEBUG > 4){fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
 
 #define CDSP_PAUSE_STATE_RUNNING 0
 #define CDSP_PAUSE_STATE_PAUSED  (1 << 0)
@@ -125,6 +137,11 @@ typedef struct {
   long ext_samp;
   long ext_samp_44100;
   long ext_samp_48000;
+
+	// Suppress a spurious warning on the first call to revents for the
+	// event triggered during prepare.  Some programs need that event to
+	// start so it's not actually an overcall.
+	bool first_revent;
 } cdsp_t;
 
 #if SND_LIB_VERSION < 0x010106
@@ -247,7 +264,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       if (pcm->io_hw_ptr == -1)
         continue;
       if (pcm->cdsp_pcm_fd == -1) {
-        debug("FAILING BECAUSE PIPE GONE\n");
+        error("FAILING BECAUSE PIPE GONE\n");
         goto fail;
       }
 
@@ -271,7 +288,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         io_hw_ptr = -1;
         goto sync;
       } else {
-        debug("IO Thread out of data.\n");
+        warn("IO Thread out of data.\n");
         // Running and no data is available.  The internal alsa buffer is
         // empty.  This isn't a problem until a period has passed though
         // at which point we have an underrun condition.
@@ -284,7 +301,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         if(xrun > 4) {
           // We've gone longer than a period with no data.
           // The player isn't providing data fast enough.
-          debug("XRUN OCCURRED!\n");
+          error("XRUN OCCURRED!\n");
           // Signal XRUN to the ioplug code
           io_hw_ptr = -1;
           goto sync;
@@ -354,7 +371,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
 	    tstop.tv_nsec = (long)(0.5*excess*1e9);
 	    nanosleep(&tstop, NULL);
     }
-    //debug("TD %lf %lf %lu\n", writetime, sampletime, frames);
+    excessive("Frames = %lu = %lf secs, Write Time = %lf\n", frames, sampletime, writetime);
 
     io_thread_update_delay(pcm, io_hw_ptr);
 
@@ -452,26 +469,26 @@ static int start_camilla(cdsp_t *pcm) {
     dup2(fd[0], STDIN_FILENO);
     close(fd[0]);
 
-    debug("cpath %s\n", pcm->cpath);
-    debug("config_in %s\n", pcm->config_in);
-    debug("config_out %s\n", pcm->cargs[1]);
-    debug("config_cmd %s\n", pcm->config_cmd);
-    debug("config_cdsp %ld\n", pcm->config_cdsp);
+    debug("cpath: %s\n", pcm->cpath);
+    debug("config_in: %s\n", pcm->config_in);
+    debug("config_out: %s\n", pcm->cargs[1]);
+    debug("config_cmd: %s\n", pcm->config_cmd);
+    debug("config_cdsp: %ld\n", pcm->config_cdsp);
     debug("cargs:");
-#ifdef DEBUG
+#if DEBUG > 3
     int ca = 2;
     while(pcm->cargs[ca]) {
-      debug(" %s", pcm->cargs[ca]);
+      fprintf(stderr," %s", pcm->cargs[ca]);
       ca++;
     }
-    debug("\n");
+    fprintf(stderr,"\n");
 #endif
     
     if(pcm->config_in) {
-      debug("format_token %s\n", pcm->format_token);
-      debug("rate_token %s\n", pcm->rate_token);
-      debug("channels_token %s\n", pcm->channels_token);
-      debug("ext_samp_token %s\n", pcm->ext_samp_token);
+      debug("format_token: %s\n", pcm->format_token);
+      debug("rate_token: %s\n", pcm->rate_token);
+      debug("channels_token: %s\n", pcm->channels_token);
+      debug("ext_samp_token: %s\n", pcm->ext_samp_token);
       FILE *cfgin = fopen(pcm->config_in, "r");
       if(!cfgin) {
         SNDERR("Error reading input config file %s\n", pcm->config_in);
@@ -500,10 +517,10 @@ static int start_camilla(cdsp_t *pcm) {
       // Command will be called with arguments "format rate channels"
       snprintf(command, 1000, "%s %s %d %d\n", pcm->config_cmd, 
           sformat, pcm->io.rate, pcm->io.channels);
-      debug("CALLING CONFIG COMMAND %s\n", command);
+      debug("Calling config_cmd %s\n", command);
       int err = system(command);
       if(err != 0) {
-        SNDERR("Error executing config command %s\n", pcm->config_cmd);
+        SNDERR("Error executing config_cmd %s\n", pcm->config_cmd);
         if(err > 0) return -err;
         return err;
       }
@@ -561,7 +578,7 @@ static int cdsp_start(snd_pcm_ioplug_t *io) {
   pcm->io_started = true;
   if ((errno = pthread_create(&pcm->io_thread, NULL,
           PTHREAD_ROUTINE(io_thread), io)) != 0) {
-    debug("Couldn't create IO thread: %s\n", strerror(errno));
+    error("Couldn't create IO thread: %s\n", strerror(errno));
     pcm->io_started = false;
     return -errno;
   }
@@ -644,7 +661,8 @@ static int cdsp_close(snd_pcm_ioplug_t *io) {
 
 static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   cdsp_t *pcm = io->private_data;
-  debug("Initializing HW\n");
+  info("Initializing hw_params: %s %d %d\n",
+			snd_pcm_format_name(io->format), io->rate, io->channels);
 
   pcm->frame_size = (snd_pcm_format_physical_width(io->format)*io->channels)/8;
 
@@ -660,12 +678,12 @@ static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
   pcm->delay_fifo_size = 
     fcntl(pcm->cdsp_pcm_fd, F_SETPIPE_SZ, 2048) / pcm->frame_size;
 
-  debug("FIFO buffer size: %ld frames\n", pcm->delay_fifo_size);
+  info("FIFO buffer size: %ld frames\n", pcm->delay_fifo_size);
 
   /* ALSA default for avail min is one period. */
   pcm->io_avail_min = io->period_size;
 
-  debug("Selected HW buffer: %ld periods x %ld bytes %c= %ld bytes\n",
+  info("Selected HW buffer: %ld periods x %ld bytes %c= %ld bytes\n",
       io->buffer_size / io->period_size, pcm->frame_size * io->period_size,
       io->period_size * (io->buffer_size / io->period_size) == io->buffer_size ? '=' : '<',
       io->buffer_size * pcm->frame_size);
@@ -697,7 +715,7 @@ static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
   snd_pcm_uframes_t avail_min;
   snd_pcm_sw_params_get_avail_min(params, &avail_min);
   if (avail_min != pcm->io_avail_min) {
-    debug("Changing SW avail min: %lu -> %lu\n", pcm->io_avail_min, avail_min);
+    info("Changing SW avail min: %lu -> %lu\n", pcm->io_avail_min, avail_min);
     pcm->io_avail_min = avail_min;
   }
 
@@ -725,6 +743,7 @@ static int cdsp_prepare(snd_pcm_ioplug_t *io) {
   // true - the IO thread may not be running yet. Applications using
   // snd_pcm_sw_params_set_start_threshold() require the PCM to be usable
   // as soon as it has been prepared.
+	pcm->first_revent = true;
   eventfd_write(pcm->event_fd, 1);
 
   debug("Prepared\n");
@@ -892,7 +911,7 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
     goto fail;
 
 	// We only advertise a single file descriptor so the 
-	// play really should be giving us that descriptor
+	// player really should be giving us that descriptor
 	// and just that descriptor.  
 	assert(nfds == 1);
 	assert(pfd[0].fd == pcm->event_fd);
@@ -935,7 +954,11 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
         break;
       case SND_PCM_STATE_RUNNING:
         if ((snd_pcm_uframes_t)avail < pcm->io_avail_min) {
-          debug("REVENTS OVERCALL %lu < %lu\n", avail, pcm->io_avail_min);
+					if(pcm->first_revent) {
+						pcm->first_revent = false;
+					} else {
+          	warn("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
+					}
           *revents = 0;
         }
         ready = false;
