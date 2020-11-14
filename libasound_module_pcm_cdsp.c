@@ -270,7 +270,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         io_hw_ptr = -1;
         goto sync;
       } else {
-        //debug("IO Thread out of data.\n");
+        debug("IO Thread out of data.\n");
         // Running and no data is available.  The internal alsa buffer is
         // empty.  This isn't a problem until a period has passed though
         // at which point we have an underrun condition.
@@ -325,6 +325,9 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
 
     ssize_t ret = 0;
 
+    struct timespec tstart,tstop,twrite;
+    gettimestamp(&tstart);
+
     // Perform atomic write - see the explanation above.
     do {
       if ((ret = write(pcm->cdsp_pcm_fd, head, len)) == -1) {
@@ -337,6 +340,20 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       head += ret;
       len -= ret;
     } while (len != 0);
+		// Things tend to run a little smoother if writes take at least
+		// some time.  So slow down when the pipe was empty enough that the
+    // write was basically instant.
+    gettimestamp(&tstop);
+    difftimespec(&tstart, &tstop, &twrite);
+    double sampletime = (double)frames/(double)io->rate;
+    double writetime = (double)twrite.tv_sec + (double)twrite.tv_nsec/1e9;
+    double excess = sampletime - writetime;
+    if(excess > 0) {
+	    tstop.tv_sec = (time_t)excess;
+	    tstop.tv_nsec = (long)(0.5*excess*1e9);
+	    nanosleep(&tstop, NULL);
+    }
+    //debug("TD %lf %lf %lu\n", writetime, sampletime, frames);
 
     io_thread_update_delay(pcm, io_hw_ptr);
 
@@ -911,6 +928,7 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
         break;
       case SND_PCM_STATE_RUNNING:
         if ((snd_pcm_uframes_t)avail < pcm->io_avail_min) {
+          debug("REVENTS OVERCALL %lu < %lu\n", avail, pcm->io_avail_min);
           *revents = 0;
         }
         ready = false;
