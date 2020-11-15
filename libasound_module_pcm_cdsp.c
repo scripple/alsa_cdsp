@@ -358,6 +358,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       head += ret;
       len -= ret;
     } while (len != 0);
+    io_thread_update_delay(pcm, io_hw_ptr);
     // Things tend to run a little smoother if writes take at least
     // some time.  So slow down when the pipe was empty enough that the
     // write was basically instant.
@@ -372,9 +373,6 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
       nanosleep(&tstop, NULL);
     }
     excessive("Frames = %lu = %lf secs, Write Time = %lf\n", frames, sampletime, writetime);
-
-    io_thread_update_delay(pcm, io_hw_ptr);
-
 
     // repeat until period is completed
     balance -= frames;
@@ -775,17 +773,18 @@ static snd_pcm_sframes_t cdsp_calculate_delay(snd_pcm_ioplug_t *io) {
   snd_pcm_sframes_t delay = 0;
 
   struct timespec now;
-  gettimestamp(&now);
 
   pthread_mutex_lock(&pcm->mutex);
 
+  gettimestamp(&now);
   struct timespec diff;
   difftimespec(&now, &pcm->delay_ts, &diff);
 
   // the maximum number of frames that can have been
   // produced/consumed by the server since pcm->delay_ts
   unsigned int tframes =
-    (diff.tv_sec * 1000 + diff.tv_nsec / 1000000) * io->rate / 1000;
+    //(diff.tv_sec * 1000 + diff.tv_nsec / 1000000) * io->rate / 1000;
+    (unsigned int)(((double)diff.tv_sec + ((double)diff.tv_nsec)/1e9) * io->rate);
 
   // the number of frames that were in the FIFO at pcm->delay_ts
   snd_pcm_uframes_t fifo_delay = pcm->delay_pcm_nread / pcm->frame_size;
@@ -798,20 +797,12 @@ static snd_pcm_sframes_t cdsp_calculate_delay(snd_pcm_ioplug_t *io) {
   snd_pcm_sframes_t buffer_delay = 0;
   if (io->state != SND_PCM_STATE_XRUN)
     buffer_delay = snd_pcm_ioplug_hw_avail(io, pcm->delay_hw_ptr, io->appl_ptr);
+  delay += buffer_delay;
 
-  // If the PCM is running, then some frames from the buffer may have been
-  // consumed.
-  if (pcm->delay_running)
-    delay += buffer_delay;
-
-  // Adjust the total delay by the number of frames consumed.
-  if ((delay -= tframes) < 0)
-    delay = 0;
-
-  // If the PCM is not running, then the frames in the buffer will not have
-  // been consumed since pcm->delay_ts.
-  if (!pcm->delay_running)
-    delay += buffer_delay;
+  if (pcm->delay_running) {
+    // Adjust the total delay by the number of frames consumed.
+    if ((delay -= tframes) < 0) delay = 0;
+  }
 
   pthread_mutex_unlock(&pcm->mutex);
 
