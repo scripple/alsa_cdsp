@@ -368,8 +368,9 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     double writetime = (double)twrite.tv_sec + (double)twrite.tv_nsec/1e9;
     double excess = sampletime - writetime;
     if(excess > 0) {
-      tstop.tv_sec = (time_t)(0.5*excess);
-      tstop.tv_nsec = (long)(0.5*excess*1e9);
+      excess *= 0.5;
+      tstop.tv_sec = (time_t)excess;
+      tstop.tv_nsec = (long)(excess*1e9);
       nanosleep(&tstop, NULL);
     }
     excessive("Frames = %lu = %lf secs, Write Time = %lf\n", frames, sampletime, writetime);
