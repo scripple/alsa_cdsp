@@ -27,10 +27,9 @@
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 
-#include "rt.h"
 #include "strrep.h"
 
-#define DEBUG 2
+#define DEBUG 1
 #define error(fmt, ...) \
   do { if(DEBUG > 0){fprintf(stderr,"CDSP Plugin ERROR: ");\
     fprintf(stderr,((fmt)), ##__VA_ARGS__);} } while (0)
@@ -56,6 +55,64 @@
 // Thread routing callback casting wrapper.
 #define PTHREAD_ROUTINE(f) ((void *(*)(void *))(f))
 
+//
+// Get system monotonic time-stamp.
+//
+// @param ts Address to the timespec structure where the time-stamp will
+// be stored.
+// @return On success this function returns 0. Otherwise, -1 is returned
+// and errno is set to indicate the error.
+#ifdef CLOCK_MONOTONIC_RAW
+# define gettimestamp(ts) clock_gettime(CLOCK_MONOTONIC_RAW, ts)
+#else
+# define gettimestamp(ts) clock_gettime(CLOCK_MONOTONIC, ts)
+#endif
+
+// Calculate time difference for two time points.
+// 
+//  @param ts1 Address to the timespec structure providing t1 time point.
+//  @param ts2 Address to the timespec structure providing t2 time point.
+//  @param ts Address to the timespec structure where the absolute time
+//    difference will be stored.
+// @return This function returns an integer less than, equal to, or greater
+//    than zero, if t2 time point is found to be, respectively, less than,
+//    equal to, or greater than the t1 time point.*/
+int difftimespec(
+		const struct timespec *ts1,
+		const struct timespec *ts2,
+		struct timespec *ts) {
+
+	const struct timespec _ts1 = *ts1;
+	const struct timespec _ts2 = *ts2;
+
+	if (_ts1.tv_sec == _ts2.tv_sec) {
+		ts->tv_sec = 0;
+		ts->tv_nsec = labs(_ts2.tv_nsec - _ts1.tv_nsec);
+		return _ts2.tv_nsec > _ts1.tv_nsec ? 1 : -ts->tv_nsec;
+	}
+
+	if (_ts1.tv_sec < _ts2.tv_sec) {
+		if (_ts1.tv_nsec <= _ts2.tv_nsec) {
+			ts->tv_sec = _ts2.tv_sec - _ts1.tv_sec;
+			ts->tv_nsec = _ts2.tv_nsec - _ts1.tv_nsec;
+		}
+		else {
+			ts->tv_sec = _ts2.tv_sec - 1 - _ts1.tv_sec;
+			ts->tv_nsec = _ts2.tv_nsec + 1000000000 - _ts1.tv_nsec;
+		}
+		return 1;
+	}
+
+	if (_ts1.tv_nsec >= _ts2.tv_nsec) {
+		ts->tv_sec = _ts1.tv_sec - _ts2.tv_sec;
+		ts->tv_nsec = _ts1.tv_nsec - _ts2.tv_nsec;
+	}
+	else {
+		ts->tv_sec = _ts1.tv_sec - 1 - _ts2.tv_sec;
+		ts->tv_nsec = _ts1.tv_nsec + 1000000000 - _ts2.tv_nsec;
+	}
+	return -1;
+}
 
 typedef struct {
   snd_pcm_ioplug_t io;
