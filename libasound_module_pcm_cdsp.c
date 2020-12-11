@@ -531,7 +531,6 @@ static int start_camilla(cdsp_t *pcm) {
     debug("config_cdsp: %ld\n", pcm->config_cdsp);
     debug("cargs:");
 #if DEBUG > 3
-    int ca = 2;
     for(int ca = 2; ca < pcm->n_cargs; ca++) {
       fprintf(stderr," %s", pcm->cargs[ca]);
     }
