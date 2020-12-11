@@ -493,19 +493,18 @@ static int start_camilla(cdsp_t *pcm) {
   snprintf(srate, sizeof(srate), "%u", pcm->io.rate);
 
   char sextrasamples[20] = "0";  // Some use really long audio chains
+  long extrasamples = 0;
   // We multiply the ext_samp by the ratio of sample rate to
   // one of the two common audio rates if the sample rate is an
   // integer multiple
   if((pcm->ext_samp_44100 > 0) && ((pcm->io.rate % 44100) == 0)) {
-    snprintf(sextrasamples, sizeof(sextrasamples), "%lu", 
-        pcm->ext_samp_44100*(pcm->io.rate/44100));
+    extrasamples = pcm->ext_samp_44100*(pcm->io.rate/44100);
   } else if((pcm->ext_samp_48000 > 0) && ((pcm->io.rate % 48000) == 0)) {
-    snprintf(sextrasamples, sizeof(sextrasamples), "%lu", 
-        pcm->ext_samp_48000*(pcm->io.rate/48000));
+    extrasamples = pcm->ext_samp_48000*(pcm->io.rate/48000);
   } else if(pcm->ext_samp > 0) {
-    snprintf(sextrasamples, sizeof(sextrasamples), "%lu", 
-        pcm->ext_samp);
+    extrasamples = pcm->ext_samp;
   }
+  snprintf(sextrasamples, sizeof(sextrasamples), "%lu", extrasamples);
 
   // Create the pipe to send data to camilla
   int fd[2];
@@ -595,8 +594,13 @@ static int start_camilla(cdsp_t *pcm) {
       pcm->cargs[pcm->n_cargs+5] = schannels;
 
       char earg[] = "-e";
-      pcm->cargs[pcm->n_cargs+6] = earg;
-      pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+      if(extrasamples > 0) {
+        pcm->cargs[pcm->n_cargs+6] = earg;
+        pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+      } else {
+        pcm->cargs[pcm->n_cargs+6] = 0;
+        pcm->cargs[pcm->n_cargs+7] = 0;
+      }
     }
 
     execv(pcm->cpath, pcm->cargs);
