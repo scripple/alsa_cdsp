@@ -532,9 +532,8 @@ static int start_camilla(cdsp_t *pcm) {
     debug("cargs:");
 #if DEBUG > 3
     int ca = 2;
-    while(pcm->cargs[ca]) {
+    for(int ca = 2; ca < pcm->n_cargs; ca++) {
       fprintf(stderr," %s", pcm->cargs[ca]);
-      ca++;
     }
     fprintf(stderr,"\n");
 #endif
@@ -654,8 +653,8 @@ static int cdsp_stop(snd_pcm_ioplug_t *io) {
   if (pcm->io_started) {
     pcm->io_started = false;
     pthread_cancel(pcm->io_thread);
-    pthread_join(pcm->io_thread, NULL);
   }
+  pthread_join(pcm->io_thread, NULL);
 
   pcm->delay_running = false;
   pcm->delay_pcm_nread = 0;
@@ -693,9 +692,10 @@ static void free_cdsp(cdsp_t **pcm) {
     free((void *)(*pcm)->cpath);
   if((*pcm)->config_in)
     free((void *)(*pcm)->config_in);
-  int f = 0;
-  while((*pcm)->cargs[f] != 0) {
-    free((void *)(*pcm)->cargs[f++]);
+  for(int f = 0; f < (*pcm)->n_cargs; f++) {
+    if((*pcm)->cargs[f] != 0) {
+      free((void *)(*pcm)->cargs[f]);
+    }
   }
   if((*pcm)->config_cmd)
     free((void *)(*pcm)->config_cmd);
