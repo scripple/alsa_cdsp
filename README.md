@@ -180,8 +180,10 @@ pcm.camilladsp {
       # common audio base rates.  This is under the assumption your filters
       # will be N times as long at N times the base rate. Any of the 
       # following three values can be set or excluded in any combination.
-      # If no extra_samples parameters are set 0 will be used wherever 
-      # extra_samples is called for.
+      # If no valid extra_samples parameter is set for a given sample rate
+      # the extra_samples token replacement will not occur in config_in mode
+      # and the -e argument will not be issued in config_cdsp mode.
+      # All extra_samples arguments must be integers >= 0.
       
       # extra_samples is used when the sample rate is not an integer multiple
       # of 44100 or 48000 or when the corresponding rate matching 

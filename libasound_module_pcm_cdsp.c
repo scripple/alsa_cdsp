@@ -492,19 +492,21 @@ static int start_camilla(cdsp_t *pcm) {
   char srate[10]; // The rate should fit in 9 digits too
   snprintf(srate, sizeof(srate), "%u", pcm->io.rate);
 
-  char sextrasamples[20] = "0";  // Some use really long audio chains
-  long extrasamples = 0;
+  char sextrasamples[20];  // Some use really long audio chains
+  long extrasamples = -1;
   // We multiply the ext_samp by the ratio of sample rate to
   // one of the two common audio rates if the sample rate is an
   // integer multiple
-  if((pcm->ext_samp_44100 > 0) && ((pcm->io.rate % 44100) == 0)) {
+  if((pcm->ext_samp_44100 >= 0) && ((pcm->io.rate % 44100) == 0)) {
     extrasamples = pcm->ext_samp_44100*(pcm->io.rate/44100);
-  } else if((pcm->ext_samp_48000 > 0) && ((pcm->io.rate % 48000) == 0)) {
+  } else if((pcm->ext_samp_48000 >= 0) && ((pcm->io.rate % 48000) == 0)) {
     extrasamples = pcm->ext_samp_48000*(pcm->io.rate/48000);
-  } else if(pcm->ext_samp > 0) {
+  } else if(pcm->ext_samp >= 0) {
     extrasamples = pcm->ext_samp;
   }
-  snprintf(sextrasamples, sizeof(sextrasamples), "%lu", extrasamples);
+  if(extrasamples >= 0) {
+    snprintf(sextrasamples, sizeof(sextrasamples), "%ld", extrasamples);
+  }
 
   // Create the pipe to send data to camilla
   int fd[2];
@@ -558,7 +560,9 @@ static int start_camilla(cdsp_t *pcm) {
         obuf = strrep(buf, pcm->format_token, sformat);
         obuf = strrep(obuf, pcm->rate_token, srate);
         obuf = strrep(obuf, pcm->channels_token, schannels);
-        obuf = strrep(obuf, pcm->ext_samp_token, sextrasamples);
+				if(extrasamples >= 0) {
+          obuf = strrep(obuf, pcm->ext_samp_token, sextrasamples);
+				}
         fprintf(cfgout,"%s",obuf);
       }
       fclose(cfgin);
@@ -592,7 +596,7 @@ static int start_camilla(cdsp_t *pcm) {
       pcm->cargs[pcm->n_cargs+5] = schannels;
 
       char earg[] = "-e";
-      if(extrasamples > 0) {
+      if(extrasamples >= 0) {
         pcm->cargs[pcm->n_cargs+6] = earg;
         pcm->cargs[pcm->n_cargs+7] = sextrasamples;
       } else {
@@ -1095,6 +1099,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   long min_rate = 0;
   long max_rate = 0;
   if((err = alloc_copy_string(&pcm->cargs[0], "camilladsp")) < 0) goto _err;
+  pcm->ext_samp = -1;
+  pcm->ext_samp_44100 = -1;
+  pcm->ext_samp_48000 = -1;
 
   snd_config_for_each(i, next, conf) {
     snd_config_t *n = snd_config_iterator_entry(i);
@@ -1200,16 +1207,31 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     }
     if(strcmp(id, "extra_samples") == 0) {
       if((err = snd_config_get_integer(n, &pcm->ext_samp)) < 0) goto _err;
+      if(pcm->ext_samp < 0) {
+        SNDERR("extra_samples must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
       continue;
     }
     if(strcmp(id, "extra_samples_44100") == 0) {
       if((err = snd_config_get_integer(n, &pcm->ext_samp_44100)) < 0) 
-              goto _err;
+        goto _err;
+      if(pcm->ext_samp_44100 < 0) {
+        SNDERR("extra_samples_44100 must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
       continue;
     }
     if(strcmp(id, "extra_samples_48000") == 0) {
       if((err = snd_config_get_integer(n, &pcm->ext_samp_48000)) < 0) 
-              goto _err;
+        goto _err;
+      if(pcm->ext_samp_48000 < 0) {
+        SNDERR("extra_samples_48000 must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
       continue;
     }
     err = -EINVAL;
