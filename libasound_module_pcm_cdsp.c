@@ -77,41 +77,38 @@
 // @return This function returns an integer less than, equal to, or greater
 //    than zero, if t2 time point is found to be, respectively, less than,
 //    equal to, or greater than the t1 time point.*/
-int difftimespec(
-		const struct timespec *ts1,
-		const struct timespec *ts2,
-		struct timespec *ts) {
+int difftimespec( const struct timespec *ts1, const struct timespec *ts2,
+    struct timespec *ts) {
+  const struct timespec _ts1 = *ts1;
+  const struct timespec _ts2 = *ts2;
 
-	const struct timespec _ts1 = *ts1;
-	const struct timespec _ts2 = *ts2;
+  if (_ts1.tv_sec == _ts2.tv_sec) {
+    ts->tv_sec = 0;
+    ts->tv_nsec = labs(_ts2.tv_nsec - _ts1.tv_nsec);
+    return _ts2.tv_nsec > _ts1.tv_nsec ? 1 : -ts->tv_nsec;
+  }
 
-	if (_ts1.tv_sec == _ts2.tv_sec) {
-		ts->tv_sec = 0;
-		ts->tv_nsec = labs(_ts2.tv_nsec - _ts1.tv_nsec);
-		return _ts2.tv_nsec > _ts1.tv_nsec ? 1 : -ts->tv_nsec;
-	}
+  if (_ts1.tv_sec < _ts2.tv_sec) {
+    if (_ts1.tv_nsec <= _ts2.tv_nsec) {
+      ts->tv_sec = _ts2.tv_sec - _ts1.tv_sec;
+      ts->tv_nsec = _ts2.tv_nsec - _ts1.tv_nsec;
+    }
+    else {
+      ts->tv_sec = _ts2.tv_sec - 1 - _ts1.tv_sec;
+      ts->tv_nsec = _ts2.tv_nsec + 1000000000 - _ts1.tv_nsec;
+    }
+    return 1;
+  }
 
-	if (_ts1.tv_sec < _ts2.tv_sec) {
-		if (_ts1.tv_nsec <= _ts2.tv_nsec) {
-			ts->tv_sec = _ts2.tv_sec - _ts1.tv_sec;
-			ts->tv_nsec = _ts2.tv_nsec - _ts1.tv_nsec;
-		}
-		else {
-			ts->tv_sec = _ts2.tv_sec - 1 - _ts1.tv_sec;
-			ts->tv_nsec = _ts2.tv_nsec + 1000000000 - _ts1.tv_nsec;
-		}
-		return 1;
-	}
-
-	if (_ts1.tv_nsec >= _ts2.tv_nsec) {
-		ts->tv_sec = _ts1.tv_sec - _ts2.tv_sec;
-		ts->tv_nsec = _ts1.tv_nsec - _ts2.tv_nsec;
-	}
-	else {
-		ts->tv_sec = _ts1.tv_sec - 1 - _ts2.tv_sec;
-		ts->tv_nsec = _ts1.tv_nsec + 1000000000 - _ts2.tv_nsec;
-	}
-	return -1;
+  if (_ts1.tv_nsec >= _ts2.tv_nsec) {
+    ts->tv_sec = _ts1.tv_sec - _ts2.tv_sec;
+    ts->tv_nsec = _ts1.tv_nsec - _ts2.tv_nsec;
+  }
+  else {
+    ts->tv_sec = _ts1.tv_sec - 1 - _ts2.tv_sec;
+    ts->tv_nsec = _ts1.tv_nsec + 1000000000 - _ts2.tv_nsec;
+  }
+  return -1;
 }
 
 typedef struct {
@@ -560,9 +557,9 @@ static int start_camilla(cdsp_t *pcm) {
         obuf = strrep(buf, pcm->format_token, sformat);
         obuf = strrep(obuf, pcm->rate_token, srate);
         obuf = strrep(obuf, pcm->channels_token, schannels);
-				if(extrasamples >= 0) {
+        if(extrasamples >= 0) {
           obuf = strrep(obuf, pcm->ext_samp_token, sextrasamples);
-				}
+        }
         fprintf(cfgout,"%s",obuf);
       }
       fclose(cfgin);
