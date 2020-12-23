@@ -196,6 +196,8 @@ typedef struct {
   // event triggered during prepare.  Some programs need that event to
   // start so it's not actually an overcall.
   bool first_revent;
+	// A command to run at init - turn on audio system for example
+  char *start_cmd;
 } cdsp_t;
 
 #if SND_LIB_VERSION < 0x010106
@@ -707,6 +709,8 @@ static void free_cdsp(cdsp_t **pcm) {
     free((void *)(*pcm)->channels_token);
   if((*pcm)->ext_samp_token)
     free((void *)(*pcm)->ext_samp_token);
+  if((*pcm)->start_cmd)
+    free((void *)(*pcm)->start_cmd);
   pthread_mutex_destroy(&(*pcm)->mutex);
   pthread_cond_destroy(&(*pcm)->pause_cond);
   free((void *)*pcm);
@@ -1231,6 +1235,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       }
       continue;
     }
+    if(strcmp(id, "start_cmd") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->start_cmd, temp)) < 0) goto _err;
+      continue;
+    }
     err = -EINVAL;
     goto _err;
   }
@@ -1413,6 +1422,17 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
           SND_PCM_IOPLUG_HW_BUFFER_BYTES, 2*min_p, max_buffer)) < 0) goto _err;
 
   *pcmp = pcm->io.pcm;
+
+	if(pcm->start_cmd) {
+		debug("Calling start_cmd: %s\n", pcm->start_cmd);
+    // Call the start_cmd 
+    int err = system(pcm->start_cmd);
+    if(err != 0) {
+      SNDERR("Error executing start_cmd %s\n", pcm->start_cmd);
+      if(err > 0) return -err;
+      return err;
+    }
+  } 
 
   return 0;
 
