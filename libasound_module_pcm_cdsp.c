@@ -23,6 +23,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
@@ -349,9 +350,14 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         // empty.  This isn't a problem until a period has passed though
         // at which point we have an underrun condition.
         // Sleep in 1/4 period intervals to wait for data to catch up
-        struct timespec ts;
-        ts.tv_sec = io->period_size / io->rate / 4;
-        ts.tv_nsec = 1000000000 / io->rate * (io->period_size/4 % io->rate);
+				// Add 1 extra sample to the period to allow for clock differences
+				// and rounding errors
+				uint64_t quarter_period_ns = 
+					(1000000000 / 4) * (io->period_size+1) / io->rate;
+    		struct timespec ts;
+    		ts.tv_sec = quarter_period_ns / 1000000000;
+    		ts.tv_nsec = quarter_period_ns - 1000000000 * ts.tv_sec;
+    		debug("Sleep Time: %ld %ld %lu %d\n", ts.tv_sec, ts.tv_nsec,io->period_size, io->rate);
         nanosleep(&ts, NULL);
         xrun++;
         if(xrun > 4) {
