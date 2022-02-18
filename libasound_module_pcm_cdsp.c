@@ -197,7 +197,7 @@ typedef struct {
   // event triggered during prepare.  Some programs need that event to
   // start so it's not actually an overcall.
   bool first_revent;
-	// A command to run at init - turn on audio system for example
+  // A command to run at init - turn on audio system for example
   char *start_cmd;
 } cdsp_t;
 
@@ -350,14 +350,14 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         // empty.  This isn't a problem until a period has passed though
         // at which point we have an underrun condition.
         // Sleep in 1/4 period intervals to wait for data to catch up
-				// Add 1 extra sample to the period to allow for clock differences
-				// and rounding errors
-				uint64_t quarter_period_ns = 
-					(1000000000 / 4) * (io->period_size+1) / io->rate;
-    		struct timespec ts;
-    		ts.tv_sec = quarter_period_ns / 1000000000;
-    		ts.tv_nsec = quarter_period_ns - 1000000000 * ts.tv_sec;
-    		debug("Sleep Time: %ld %ld %lu %d\n", ts.tv_sec, ts.tv_nsec,io->period_size, io->rate);
+        // Add 1 extra sample to the period to allow for clock differences
+        // and rounding errors
+        uint64_t quarter_period_ns = 
+          (1000000000 / 4) * (io->period_size+1) / io->rate;
+        struct timespec ts;
+        ts.tv_sec = quarter_period_ns / 1000000000;
+        ts.tv_nsec = quarter_period_ns - 1000000000 * ts.tv_sec;
+        debug("Sleep Time: %ld %ld %lu %d\n", ts.tv_sec, ts.tv_nsec,io->period_size, io->rate);
         nanosleep(&ts, NULL);
         xrun++;
         if(xrun > 4) {
@@ -1429,8 +1429,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
 
   *pcmp = pcm->io.pcm;
 
-	if(pcm->start_cmd) {
-		debug("Calling start_cmd: %s\n", pcm->start_cmd);
+  if(pcm->start_cmd) {
+    debug("Calling start_cmd: %s\n", pcm->start_cmd);
     // Call the start_cmd 
     int err = system(pcm->start_cmd);
     if(err != 0) {
