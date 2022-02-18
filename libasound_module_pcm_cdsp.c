@@ -432,6 +432,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     if(excess > 0) {
       excess *= 0.5;
       tstop.tv_sec = (time_t)excess;
+      excess -= tstop.tv_sec;
       tstop.tv_nsec = (long)(excess*1e9);
       nanosleep(&tstop, NULL);
     }
