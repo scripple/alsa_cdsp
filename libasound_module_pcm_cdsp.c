@@ -293,7 +293,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
   // We update pcm->io_hw_ptr (i.e. the value seen by ioplug) only when
   // a period has been completed. We use a temporary copy during the
   // transfer procedure.
-  snd_pcm_uframes_t io_hw_ptr = pcm->io_hw_ptr;
+  snd_pcm_sframes_t io_hw_ptr = pcm->io_hw_ptr;
 
   debug("Starting IO loop: %d\n", pcm->cdsp_pcm_fd);
   for (;;) {
@@ -774,21 +774,9 @@ static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
 
   snd_pcm_sw_params_get_boundary(params, &pcm->io_hw_boundary);
 
-  snd_pcm_uframes_t avail_min;
-  int err = snd_pcm_sw_params_get_avail_min(params, &avail_min);
-  if (err) {
-#if SND_LIB_VERSION >= 0x010104 && SND_LIB_VERSION <= 0x010205
-    error("Your version of alsalib has a bug in the IO plugin framework.  If you have trouble with alsa_cdsp please upgrade your version of alsa to > 1.2.5.1\n");
-    return 0;
-#endif
-    return err;
-  }
-
-  info("Err = %d\n", err);
-  if (avail_min != pcm->io_avail_min) {
-    info("Changing SW avail min: %lu -> %lu\n", pcm->io_avail_min, avail_min);
-    pcm->io_avail_min = avail_min;
-  }
+	// We would get avail_min here but alsa has hidden it from the plugin
+	// So we'll just have to ignore the player's request and stick to
+	// period_size
 
   return 0;
 }
