@@ -295,14 +295,11 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
   // transfer procedure.
   snd_pcm_uframes_t io_hw_ptr = pcm->io_hw_ptr;
 
-  // The number of frames to complete the current period.
-  snd_pcm_uframes_t balance = io->period_size;
-
   debug("Starting IO loop: %d\n", pcm->cdsp_pcm_fd);
   for (;;) {
     if (pcm->pause_state & CDSP_PAUSE_STATE_PENDING ||
         pcm->io_hw_ptr == -1) {
-      debug("Pausing IO thread: %ld\n", pcm->io_hw_ptr);
+      debug("Pausing IO thread\n");
 
       pthread_mutex_lock(&pcm->mutex);
       pcm->pause_state = CDSP_PAUSE_STATE_PAUSED;
@@ -325,12 +322,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
         goto fail;
       }
 
-      io_hw_ptr = io->hw_ptr;
-    }
-
-    if (io->state == SND_PCM_STATE_DISCONNECTED) {
-      fprintf(stderr,"DISCONNECTED?\n");
-      goto fail;
+      io_hw_ptr = pcm->io_hw_ptr;
     }
 
     // There are 2 reasons why the number of available frames may be
@@ -338,12 +330,13 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     // -1 to indicate we have no work to do.
     snd_pcm_uframes_t avail;
     if ((avail = snd_pcm_ioplug_hw_avail(io, io_hw_ptr, io->appl_ptr)) == 0) {
-      io_thread_update_delay(pcm, 0);
       if(io->state == SND_PCM_STATE_DRAINING) {
         // Draining is complete.  Signal that to the ioplug code so it will
         // drop the pcm.
-        io_hw_ptr = -1;
-        goto sync;
+        pcm->io_hw_ptr = io_hw_ptr = -1;
+        io_thread_update_delay(pcm, 0);
+        eventfd_write(pcm->event_fd, 1);
+        continue;
       } else {
         warn("IO Thread out of data.\n");
         // Running and no data is available.  The internal alsa buffer is
@@ -365,31 +358,30 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
           // The player isn't providing data fast enough.
           error("XRUN OCCURRED!\n");
           // Signal XRUN to the ioplug code
-          io_hw_ptr = -1;
-          goto sync;
+          pcm->io_hw_ptr = io_hw_ptr = -1;
+          io_thread_update_delay(pcm, 0);
+          eventfd_write(pcm->event_fd, 1);
         }
-        // The hw_ptr didn't actually change so don't trigger a sync
-        // event.
-        goto nosync;
+        continue;
       }
     }
     // Data available - reset the xrun counter
     xrun = 0;
 
-    // the number of frames to be transferred in this iteration
-    snd_pcm_uframes_t frames = balance;
     // current offset of the head pointer in the IO buffer
     snd_pcm_uframes_t offset = io_hw_ptr % io->buffer_size;
 
-    // Do not try to transfer more frames than are available in the ring
-    // buffer!
+    // Transfer at most 1 period of frames each iteration
+    snd_pcm_uframes_t frames = io->period_size;
+    // ... but do not try to transfer more frames than are available in
+    // the ring buffer!
     if (frames > avail)
       frames = avail;
 
-    // If the leftover in the buffer is less than a whole period sizes,
-    // adjust the number of frames which should be transfered. It has
-    // turned out, that the buffer might contain fractional number of
-    // periods - it could be an ALSA bug, though, it has to be handled.
+    // When used with the rate plugin the buffer might contain a fractional
+    // number of periods.  So if the leftover in the buffer is less than a
+    // whole period size adjust the number of frames which should be
+    // transferred.
     if (io->buffer_size - offset < frames)
       frames = io->buffer_size - offset;
 
@@ -397,8 +389,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     size_t len = frames * pcm->frame_size;
     char *head = pcm->io_hw_buffer + offset * pcm->frame_size;
 
-    // Increment the HW pointer (with boundary wrap) ready for the next
-    // iteration.
+    // Increment the HW pointer (with boundary wrap)
     io_hw_ptr += frames;
     if (io_hw_ptr >= pcm->io_hw_boundary)
       io_hw_ptr -= pcm->io_hw_boundary;
@@ -438,22 +429,12 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     }
     excessive("Frames = %lu = %lf secs, Write Time = %lf\n", frames, sampletime, writetime);
 
-    // repeat until period is completed
-    balance -= frames;
-    if (balance > 0)
-      continue;
-
-sync:
     // Make the new HW pointer value visible to the ioplug.
     pcm->io_hw_ptr = io_hw_ptr;
 
-    // Generate poll() event so application is made aware of
-    // the HW pointer change.
-    eventfd_write(pcm->event_fd, 1);
-
-nosync:
-    // Start the next period.
-    balance = io->period_size;
+    // Wake application thread if enough space/frames is available
+    if (frames + io->buffer_size - avail >= pcm->io_avail_min)
+      eventfd_write(pcm->event_fd, 1);
   }
 
 fail:
@@ -685,8 +666,18 @@ static int cdsp_stop(snd_pcm_ioplug_t *io) {
 
 static snd_pcm_sframes_t cdsp_pointer(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
+  
+  // Any error returned here is translated to -EPIPE, SND_PCM_STATE_XRUN,
+  // by ioplug; and that prevents snd_pcm_readi() and snd_pcm_writei()
+  // from returning -ENODEV to the application on device disconnection.
+  // Instead, when the device is disconnected, we update the PCM state
+  // directly here but we do not return an error code. This ensures that
+  // ioplug does not undo that state change. Both snd_pcm_readi() and
+  // snd_pcm_writei() return -ENODEV when the PCM state is
+  // SND_PCM_STATE_DISCONNECTED after their internal call to
+  // snd_pcm_avail_update(), which will be the case when we set it here.
   if (pcm->cdsp_pcm_fd == -1)
-    return -ENODEV;
+    snd_pcm_ioplug_set_state(io, SND_PCM_STATE_DISCONNECTED);
 #ifndef SND_PCM_IOPLUG_FLAG_BOUNDARY_WA
   if (pcm->io_hw_ptr != -1)
     return pcm->io_hw_ptr % io->buffer_size;
@@ -784,7 +775,16 @@ static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
   snd_pcm_sw_params_get_boundary(params, &pcm->io_hw_boundary);
 
   snd_pcm_uframes_t avail_min;
-  snd_pcm_sw_params_get_avail_min(params, &avail_min);
+  int err = snd_pcm_sw_params_get_avail_min(params, &avail_min);
+  if (err) {
+#if SND_LIB_VERSION >= 0x010104 && SND_LIB_VERSION <= 0x010205
+    error("Your version of alsalib has a bug in the IO plugin framework.  If you have trouble with alsa_cdsp please upgrade your version of alsa to > 1.2.5.1\n");
+    return 0;
+#endif
+    return err;
+  }
+
+  info("Err = %d\n", err);
   if (avail_min != pcm->io_avail_min) {
     info("Changing SW avail min: %lu -> %lu\n", pcm->io_avail_min, avail_min);
     pcm->io_avail_min = avail_min;
@@ -1421,9 +1421,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   unsigned int min_p = max_rate / 100 * max_channels * 4 / 8;
 
   if ((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
-          SND_PCM_IOPLUG_HW_PERIOD_BYTES, min_p, 1024 * 16)) < 0) goto _err;
+          SND_PCM_IOPLUG_HW_PERIOD_BYTES, min_p, 1024 * 1024)) < 0) goto _err;
 
-  unsigned int max_buffer = 128*1024;
+  unsigned int max_buffer = 2*1024*1024;
   if(max_buffer < 2*min_p) max_buffer = 2*min_p;
   if((err = snd_pcm_ioplug_set_param_minmax(&pcm->io, 
           SND_PCM_IOPLUG_HW_BUFFER_BYTES, 2*min_p, max_buffer)) < 0) goto _err;
