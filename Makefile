@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS += -Wall -fPIC -DPIC 
+CFLAGS += -Wall -Wextra -fPIC -DPIC 
 LDFLAGS += -Wall -shared -lasound
 #LIBDIR := lib/$(shell gcc --print-multiarch)
 LIBDIR := $(shell pkg-config --variable=libdir alsa)

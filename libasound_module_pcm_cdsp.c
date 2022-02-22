@@ -527,7 +527,7 @@ static int start_camilla(cdsp_t *pcm) {
     debug("config_cdsp: %ld\n", pcm->config_cdsp);
     debug("cargs:");
 #if DEBUG > 3
-    for(int ca = 2; ca < pcm->n_cargs; ca++) {
+    for(size_t ca = 2; ca < pcm->n_cargs; ca++) {
       fprintf(stderr," %s", pcm->cargs[ca]);
     }
     fprintf(stderr,"\n");
@@ -701,7 +701,7 @@ static void free_cdsp(cdsp_t **pcm) {
     free((void *)(*pcm)->cpath);
   if((*pcm)->config_in)
     free((void *)(*pcm)->config_in);
-  for(int f = 0; f < (*pcm)->n_cargs; f++) {
+  for(size_t f = 0; f < (*pcm)->n_cargs; f++) {
     if((*pcm)->cargs[f] != 0) {
       free((void *)(*pcm)->cargs[f]);
     }
@@ -730,7 +730,7 @@ static int cdsp_close(snd_pcm_ioplug_t *io) {
   return 0;
 }
 
-static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params) {
+static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params __attribute__((unused))) {
   cdsp_t *pcm = io->private_data;
   info("Initializing hw_params: %s %d %d\n",
       snd_pcm_format_name(io->format), io->rate, io->channels);
@@ -1080,9 +1080,9 @@ static const snd_pcm_ioplug_callback_t cdsp_callback = {
   .prepare = cdsp_prepare,
   .drain = cdsp_drain,
   .pause = cdsp_pause,
+  .poll_revents = cdsp_poll_revents,
   .dump = cdsp_dump,
   .delay = cdsp_delay,
-  .poll_revents = cdsp_poll_revents,
 };
 
 // THIS ASSUMES SRC IS NULL TERMINATED!
