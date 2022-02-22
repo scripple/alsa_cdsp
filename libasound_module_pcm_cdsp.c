@@ -131,7 +131,9 @@ typedef struct {
   // (pcm->io_hw_ptr), the application is responsible for the application
   // pointer (io->appl_ptr). These are both volatile as they are both
   // written in one thread and read in the other.
-  volatile snd_pcm_sframes_t io_hw_ptr;
+  volatile snd_pcm_uframes_t io_hw_ptr;
+  // A signed value for the status return to the IO plugin pointer call
+  volatile int io_status;
   snd_pcm_uframes_t io_hw_boundary;
   // Permit the application to modify the frequency of poll() events.
   volatile snd_pcm_uframes_t io_avail_min;
@@ -241,7 +243,7 @@ static void io_thread_cleanup(cdsp_t *pcm) {
 }
 
 // Helper function for IO thread delay calculation.
-static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_sframes_t hw_ptr) {
+static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_uframes_t hw_ptr) {
   struct timespec now;
   unsigned int nread = 0;
 
@@ -254,7 +256,7 @@ static void io_thread_update_delay(cdsp_t *pcm, snd_pcm_sframes_t hw_ptr) {
   // stash current time and levels
   pcm->delay_ts = now;
   pcm->delay_pcm_nread = nread;
-  if (hw_ptr == -1) {
+  if (pcm->io_status < 0) {
     pcm->delay_hw_ptr = 0;
     if (pcm->io.stream == SND_PCM_STREAM_PLAYBACK)
       pcm->delay_running = false;
@@ -293,12 +295,12 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
   // We update pcm->io_hw_ptr (i.e. the value seen by ioplug) only when
   // a period has been completed. We use a temporary copy during the
   // transfer procedure.
-  snd_pcm_sframes_t io_hw_ptr = pcm->io_hw_ptr;
+  snd_pcm_uframes_t io_hw_ptr = pcm->io_hw_ptr;
 
   debug("Starting IO loop: %d\n", pcm->cdsp_pcm_fd);
   for (;;) {
     if (pcm->pause_state & CDSP_PAUSE_STATE_PENDING ||
-        pcm->io_hw_ptr == -1) {
+        pcm->io_status < 0) {
       debug("Pausing IO thread\n");
 
       pthread_mutex_lock(&pcm->mutex);
@@ -315,25 +317,23 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
 
       debug("IO thread resumed\n");
 
-      if (pcm->io_hw_ptr == -1)
+      if (pcm->io_status < 0)
         continue;
       if (pcm->cdsp_pcm_fd == -1) {
         error("FAILING BECAUSE PIPE GONE\n");
         goto fail;
       }
-
-      io_hw_ptr = pcm->io_hw_ptr;
     }
 
     // There are 2 reasons why the number of available frames may be
-    // zero: XRUN or drained final samples; we set the HW pointer to
+    // zero: XRUN or drained final samples; we set the io_status to
     // -1 to indicate we have no work to do.
     snd_pcm_uframes_t avail;
     if ((avail = snd_pcm_ioplug_hw_avail(io, io_hw_ptr, io->appl_ptr)) == 0) {
       if(io->state == SND_PCM_STATE_DRAINING) {
         // Draining is complete.  Signal that to the ioplug code so it will
         // drop the pcm.
-        pcm->io_hw_ptr = io_hw_ptr = -1;
+        pcm->io_status = -1;
         io_thread_update_delay(pcm, 0);
         eventfd_write(pcm->event_fd, 1);
         continue;
@@ -358,7 +358,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
           // The player isn't providing data fast enough.
           error("XRUN OCCURRED!\n");
           // Signal XRUN to the ioplug code
-          pcm->io_hw_ptr = io_hw_ptr = -1;
+          pcm->io_status = -1;
           io_thread_update_delay(pcm, 0);
           eventfd_write(pcm->event_fd, 1);
         }
@@ -367,6 +367,7 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     }
     // Data available - reset the xrun counter
     xrun = 0;
+    pcm->io_status = 0;
 
     // current offset of the head pointer in the IO buffer
     snd_pcm_uframes_t offset = io_hw_ptr % io->buffer_size;
@@ -375,15 +376,16 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     snd_pcm_uframes_t frames = io->period_size;
     // ... but do not try to transfer more frames than are available in
     // the ring buffer!
-    if (frames > avail)
+    if (frames > avail) {
       frames = avail;
+    }
 
-    // When used with the rate plugin the buffer might contain a fractional
-    // number of periods.  So if the leftover in the buffer is less than a
-    // whole period size adjust the number of frames which should be
-    // transferred.
-    if (io->buffer_size - offset < frames)
+    // Sometimes alsa chooses a buffer size that isn't an integer multiple
+    // of the period size.  In that case don't read past the end of the 
+    // buffer.
+    if (io->buffer_size - offset < frames) {
       frames = io->buffer_size - offset;
+    }
 
     // IO operation size in bytes
     size_t len = frames * pcm->frame_size;
@@ -432,8 +434,12 @@ static void *io_thread(snd_pcm_ioplug_t *io) {
     // Make the new HW pointer value visible to the ioplug.
     pcm->io_hw_ptr = io_hw_ptr;
 
-    // Wake application thread if enough space/frames is available
-    if (frames + io->buffer_size - avail >= pcm->io_avail_min)
+    // Wake application thread if enough space/frames are available
+    // to write avail_min frames.  Note that just as we can't read
+    // past the end of the hardware buffer the app can't write past
+    // it so the metric is distance from the end of the buffer.
+    offset = io_hw_ptr % io->buffer_size;
+    if(io->buffer_size - offset >= pcm->io_avail_min)
       eventfd_write(pcm->event_fd, 1);
   }
 
@@ -649,12 +655,12 @@ static int cdsp_stop(snd_pcm_ioplug_t *io) {
   pcm->delay_running = false;
   pcm->delay_pcm_nread = 0;
 
-  // Bug in ioplug - if pcm->io_hw_ptr == -1 then it reports state
+  // Bug in ioplug - if pcm->io_status == -1 then it reports state
   // SND_PCM_STATE_XRUN instead of SND_PCM_STATE_SETUP after PCM
   // was stopped.
   // However -1 should be set if it is due to draining
   if(io->state != SND_PCM_STATE_DRAINING) {
-    pcm->io_hw_ptr = 0;
+    pcm->io_status = 0;
   }
 
   // Applications that call poll() after snd_pcm_drain() will be blocked
@@ -679,10 +685,12 @@ static snd_pcm_sframes_t cdsp_pointer(snd_pcm_ioplug_t *io) {
   if (pcm->cdsp_pcm_fd == -1)
     snd_pcm_ioplug_set_state(io, SND_PCM_STATE_DISCONNECTED);
 #ifndef SND_PCM_IOPLUG_FLAG_BOUNDARY_WA
-  if (pcm->io_hw_ptr != -1)
+  if (pcm->io_status >= 0)
     return pcm->io_hw_ptr % io->buffer_size;
 #endif
-  return pcm->io_hw_ptr;
+  if (pcm->io_status >= 0)
+    return pcm->io_hw_ptr;
+  return pcm->io_status;
 }
 
 static void free_cdsp(cdsp_t **pcm) {
@@ -774,9 +782,9 @@ static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
 
   snd_pcm_sw_params_get_boundary(params, &pcm->io_hw_boundary);
 
-	// We would get avail_min here but alsa has hidden it from the plugin
-	// So we'll just have to ignore the player's request and stick to
-	// period_size
+  // We would get avail_min here but alsa has hidden it from the plugin
+  // So we'll just have to ignore the player's request and stick to
+  // period_size
 
   return 0;
 }
@@ -788,8 +796,9 @@ static int cdsp_prepare(snd_pcm_ioplug_t *io) {
   if (pcm->cdsp_pcm_fd == -1)
     return -ENODEV;
 
-  // initialize ring buffer
+  // initialize ring buffer and status
   pcm->io_hw_ptr = 0;
+  pcm->io_status = 0;
 
   // The ioplug allocates and configures its channel area buffer when the
   // HW parameters are fixed, but after calling cdsp_hw_params(). So,
@@ -813,7 +822,7 @@ static int cdsp_drain(snd_pcm_ioplug_t *io) {
   debug("Draining\n");
   cdsp_t *pcm = io->private_data;
   // Wait for the playback thread to empty the ring buffer
-  while(pcm->io_hw_ptr != -1)
+  while(pcm->io_status >= 0)
     usleep(10);
   // We cannot recover from an error here. By returning zero we ensure that
   // ioplug stops the pcm. Returning an error code would be interpreted by
@@ -1009,7 +1018,12 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
           if(pcm->first_revent) {
             pcm->first_revent = false;
           } else {
-            warn("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
+            // This was detecting a problem caused by hardware buffers
+            // not being an integer multiple of the period size and 
+            // and improper condition to wake the app in the io thread.
+            // It should not occur anymore so we upgrade debug from warning
+            // to error
+            error("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
           }
           *revents = 0;
         }
