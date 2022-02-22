@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
@@ -776,11 +777,21 @@ static int cdsp_hw_free(snd_pcm_ioplug_t *io) {
   return 0;
 }
 
+// A check that get_boundary still works
+static snd_pcm_uframes_t calc_boundary_size(snd_pcm_ioplug_t *io) {
+  snd_pcm_uframes_t boundary;
+  boundary = io->buffer_size;
+  while (boundary * 2 <= LONG_MAX - io->buffer_size)
+    boundary *= 2;
+  return boundary;
+}
+
 static int cdsp_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params) {
   cdsp_t *pcm = io->private_data;
   debug("Initializing SW\n");
 
   snd_pcm_sw_params_get_boundary(params, &pcm->io_hw_boundary);
+  assert(pcm->io_hw_boundary == calc_boundary_size(io));
 
   // We would get avail_min here but alsa has hidden it from the plugin
   // So we'll just have to ignore the player's request and stick to
