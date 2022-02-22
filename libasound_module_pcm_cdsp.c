@@ -905,11 +905,13 @@ static int cdsp_pause(snd_pcm_ioplug_t *io, int enable) {
     pthread_mutex_unlock(&pcm->mutex);
   }
 
-  if (enable == 0)
+  if (enable == 0) {
+    pcm->first_revent = true;
     pthread_kill(pcm->io_thread, SIGIO);
-  else
+  } else {
     // store current delay value
     pcm->delay_paused = cdsp_calculate_delay(io);
+  }
 
   // Even though PCM transport is paused, our IO thread is still running. If
   // the implementer relies on the PCM file descriptor readiness, we have to
