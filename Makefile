@@ -1,6 +1,8 @@
 CC = gcc
 CFLAGS += -Wall -Wextra -fPIC -DPIC 
-LDFLAGS += -Wall -shared -lasound
+#LDFLAGS += -Wall -shared -lasound
+#LDFLAGS below is needed in Debian Buster for certain sound players
+LDFLAGS += -Wall -shared -Wl,--no-as-needed -lasound -Wl,--as-needed
 #LIBDIR := lib/$(shell gcc --print-multiarch)
 LIBDIR := $(shell pkg-config --variable=libdir alsa)
 
