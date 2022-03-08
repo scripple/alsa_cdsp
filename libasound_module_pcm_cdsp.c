@@ -60,15 +60,18 @@
 //
 // Get system monotonic time-stamp.
 //
+// Why try for RAW?  We're trying to simulate an accurate clock.  Let
+// ntp correct the rate.
+//
 // @param ts Address to the timespec structure where the time-stamp will
 // be stored.
 // @return On success this function returns 0. Otherwise, -1 is returned
 // and errno is set to indicate the error.
-#ifdef CLOCK_MONOTONIC_RAW
-# define gettimestamp(ts) clock_gettime(CLOCK_MONOTONIC_RAW, ts)
-#else
+//#ifdef CLOCK_MONOTONIC_RAW
+//# define gettimestamp(ts) clock_gettime(CLOCK_MONOTONIC_RAW, ts)
+//#else
 # define gettimestamp(ts) clock_gettime(CLOCK_MONOTONIC, ts)
-#endif
+//#endif
 
 // Calculate time difference for two time points.
 // 
@@ -173,14 +176,17 @@ typedef struct {
   // And yet another alternative use CamillaDSP's new internal
   // subsitution
   long config_cdsp;
+  // Gain and mute startup file
+  char *vol_file;
   // Arguments to execv
   // cargs[0] = "camilladsp" => Process name
   // cargs[1] = config_out => Location of CamillaDSP output YAML configuration
   // cargs[2+] = Additional arguments passed through .asoundrc
   // If config_cdsp cargs will also be used to hold hw_params
+  // If vol_file is set cargs will also be used to hold mute and gain
   // Make the array a bit bigger to allow them
   size_t n_cargs;
-  char *cargs[110];
+  char *cargs[120];
   // Search / Replace string tokens - let people use whatever format
   // they want.
   char *format_token;
@@ -525,6 +531,7 @@ static int start_camilla(cdsp_t *pcm) {
     debug("config_out: %s\n", pcm->cargs[1]);
     debug("config_cmd: %s\n", pcm->config_cmd);
     debug("config_cdsp: %ld\n", pcm->config_cdsp);
+    debug("vol_file: %s\n", pcm->vol_file);
     debug("cargs:");
 #if DEBUG > 3
     for(size_t ca = 2; ca < pcm->n_cargs; ca++) {
@@ -533,6 +540,23 @@ static int start_camilla(cdsp_t *pcm) {
     fprintf(stderr,"\n");
 #endif
     
+    double gain = 0;
+    // Use mute < 0 as the flag for gain and mute being set.
+    int mute = -1;
+    size_t extra_cargs = 0;
+    if(pcm->vol_file) {
+      FILE *volfile = fopen(pcm->vol_file, "r");
+      if(!volfile) {
+        SNDERR("Error reading input volume file %s\n", pcm->vol_file);
+        return -EINVAL;
+      }
+      if(fscanf(volfile, "%lf %d", &gain, &mute) != 2) {
+        SNDERR("Error reading input volume file %s\n", pcm->vol_file);
+        return -EINVAL;
+      }
+      debug("Read Volume File:  Gain = %lf, Mute = %d\n", gain, mute);
+      fclose(volfile);
+    }
     if(pcm->config_in) {
       debug("format_token: %s\n", pcm->format_token);
       debug("rate_token: %s\n", pcm->rate_token);
@@ -580,22 +604,40 @@ static int start_camilla(cdsp_t *pcm) {
       char farg[] = "-f";
       pcm->cargs[pcm->n_cargs] = farg;
       pcm->cargs[pcm->n_cargs+1] = sformat;
+      extra_cargs += 2;
 
       char rarg[] = "-r";
       pcm->cargs[pcm->n_cargs+2] = rarg;
       pcm->cargs[pcm->n_cargs+3] = srate;
+      extra_cargs += 2;
 
       char narg[] = "-n";
       pcm->cargs[pcm->n_cargs+4] = narg;
       pcm->cargs[pcm->n_cargs+5] = schannels;
+      extra_cargs += 2;
 
       char earg[] = "-e";
       if(extrasamples >= 0) {
         pcm->cargs[pcm->n_cargs+6] = earg;
         pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+        extra_cargs += 2;
       } else {
         pcm->cargs[pcm->n_cargs+6] = 0;
         pcm->cargs[pcm->n_cargs+7] = 0;
+        // Don't advance extra_cargs pointer as we might add
+        // gain and mute
+      }
+    }
+    if(mute >= 0) {
+      char sgain[30]; // Big enough for argument and value
+      snprintf(sgain, sizeof(sgain), "-g%lf", gain);
+      pcm->cargs[pcm->n_cargs+extra_cargs] = sgain;
+      if(mute > 0) {
+        char marg[] = "-m";
+        pcm->cargs[pcm->n_cargs+extra_cargs+1] = marg;
+        pcm->cargs[pcm->n_cargs+extra_cargs+2] = 0;
+      } else {
+        pcm->cargs[pcm->n_cargs+extra_cargs+1] = 0;
       }
     }
 
@@ -708,6 +750,8 @@ static void free_cdsp(cdsp_t **pcm) {
   }
   if((*pcm)->config_cmd)
     free((void *)(*pcm)->config_cmd);
+  if((*pcm)->vol_file)
+    free((void *)(*pcm)->vol_file);
   if((*pcm)->format_token)
     free((void *)(*pcm)->format_token);
   if((*pcm)->rate_token)
@@ -931,6 +975,7 @@ static void cdsp_dump(snd_pcm_ioplug_t *io, snd_output_t *out) {
     snd_output_printf(out, "config_in: %s\n", pcm->config_in);
   if(pcm->config_cmd)
     snd_output_printf(out, "config_cmd: %s\n", pcm->config_cmd);
+  snd_output_printf(out, "vol_file: %s\n", pcm->vol_file);
   // alsa-lib commits the PCM setup only if cdsp_hw_params() returned
   // success, so we only dump the ALSA PCM parameters if CamillaDSP was
   // started.
@@ -1031,12 +1076,7 @@ static int cdsp_poll_revents(snd_pcm_ioplug_t *io, struct pollfd *pfd,
           if(pcm->first_revent) {
             pcm->first_revent = false;
           } else {
-            // This was detecting a problem caused by hardware buffers
-            // not being an integer multiple of the period size and 
-            // and improper condition to wake the app in the io thread.
-            // It should not occur anymore so we upgrade debug from warning
-            // to error
-            error("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
+            warn("Revents overcall %lu < %lu\n", avail, pcm->io_avail_min);
           }
           *revents = 0;
         }
@@ -1155,6 +1195,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     }
     if(strcmp(id, "config_cdsp") == 0) {
       if((err = snd_config_get_integer(n, &pcm->config_cdsp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "vol_file") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->vol_file, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "format_token") == 0) {
