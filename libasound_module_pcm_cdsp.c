@@ -208,6 +208,9 @@ typedef struct {
   bool first_revent;
   // A command to run at init - turn on audio system for example
   char *start_cmd;
+  // A command to run just before the CamillaDSP process is ended
+  // A good time to update the gain and mute values for example
+  char *camilla_exit_cmd;
 } cdsp_t;
 
 #if SND_LIB_VERSION < 0x010106
@@ -762,6 +765,8 @@ static void free_cdsp(cdsp_t **pcm) {
     free((void *)(*pcm)->ext_samp_token);
   if((*pcm)->start_cmd)
     free((void *)(*pcm)->start_cmd);
+  if((*pcm)->camilla_exit_cmd)
+    free((void *)(*pcm)->camilla_exit_cmd);
   pthread_mutex_destroy(&(*pcm)->mutex);
   pthread_cond_destroy(&(*pcm)->pause_cond);
   free((void *)*pcm);
@@ -809,6 +814,15 @@ static int cdsp_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params __at
 static int cdsp_hw_free(snd_pcm_ioplug_t *io) {
   cdsp_t *pcm = io->private_data;
   debug("Freeing HW\n");
+  int err = 0;
+  if(pcm->camilla_exit_cmd) {
+    debug("Calling camilla_exit_cmd: %s\n", pcm->camilla_exit_cmd);
+    // Call the camilla_exit_cmd 
+    err = system(pcm->camilla_exit_cmd);
+    if(err != 0) {
+      SNDERR("Error executing camilla_exit_cmd %s\n", pcm->camilla_exit_cmd);
+    }
+  } 
   debug("Stopping Camilla\n");
   if (close_transport(pcm) == -1)
     return -errno;
@@ -818,7 +832,8 @@ static int cdsp_hw_free(snd_pcm_ioplug_t *io) {
     waitpid(pcm->cpid, NULL, 0);
     pcm->cpid = -1;
   }
-  return 0;
+  if(err > 0) return -err;
+  return err;
 }
 
 // A check that get_boundary still works
@@ -1305,6 +1320,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     if(strcmp(id, "start_cmd") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
       if((err = alloc_copy_string(&pcm->start_cmd, temp)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "camilla_exit_cmd") == 0) {
+      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
+      if((err = alloc_copy_string(&pcm->camilla_exit_cmd, temp)) < 0) goto _err;
       continue;
     }
     err = -EINVAL;
