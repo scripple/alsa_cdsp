@@ -64,13 +64,6 @@ pcm.camilladsp {
       # audio program that uses this plugin.
       cpath "/path/to/camilladsp"
       
-      # config_out is the absolute path that will be passed to CamillaDSP as
-      # the YAML config file argument. The file must be readable by any user
-      # that runs an audio program that uses this plugin.  If the config_in
-      # or config_cmd options are chosen (see below) it must also be writable
-      # by those users.
-      config_out "/path/to/config_out.yaml"
-      
       #######################################################################
       # Parameter Passing Options
       #
@@ -80,6 +73,13 @@ pcm.camilladsp {
       # config_cdsp.
       #######################################################################
 
+      # config_out is the absolute path that will be passed to CamillaDSP as
+      # the YAML config file argument. The file must be readable by any user
+      # that runs an audio program that uses this plugin.  If the config_in
+      # or config_cmd options are chosen (see below) it must also be writable
+      # by those users.
+      config_out "/path/to/config_out.yaml"
+    
       # config_in is an absolute path to a YAML template the plugin will read
       # and pass along to CamillaDSP after making simple token substitutions.
       # It must be readable by any user that runs an audio program that uses
