@@ -1356,12 +1356,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     }
   }
 
-  if(!pcm->cargs[1]) {
-    SNDERR("Must supply config_out file parameter.");
-    err = -EINVAL;
-    goto _err;
-  }
-
   if(channels == 0) {
     if(min_channels <= 0 || max_channels <= 0) {
       SNDERR("Must supply valid channel information.");
