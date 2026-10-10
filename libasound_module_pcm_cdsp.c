@@ -892,7 +892,7 @@ static int cdsp_drain(snd_pcm_ioplug_t *io) {
   debug("Draining\n");
   cdsp_t *pcm = io->private_data;
   // Wait for the playback thread to empty the ring buffer
-  while(pcm->io_status >= 0)
+  while(pcm->io_started && pcm->io_status >= 0)
     usleep(10);
   // We cannot recover from an error here. By returning zero we ensure that
   // ioplug stops the pcm. Returning an error code would be interpreted by
